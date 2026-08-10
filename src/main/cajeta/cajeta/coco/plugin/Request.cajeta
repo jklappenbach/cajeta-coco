@@ -1,0 +1,110 @@
+package cajeta.coco.plugin;
+
+import cajeta.codec.json.JsonReader;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+
+/**
+ * The parsed plugin request — the single JSON object the build tool writes
+ * on stdin (PluginRuntime.cpp's protocol v1).
+ *
+ * Only what coco's actions consume is captured; everything else flows
+ * through the depth accounting untouched. Field capture is SECTION-scoped
+ * because the protocol's top level has its own `entry` key (the sidecar
+ * symbol path) that must not collide with `params.entry` (the measured
+ * program's test entry point).
+ */
+public class Request {
+    /** Top-level action name. */
+    String action;
+    /** context.workdir — the consumer project's root. */
+    String workdir;
+
+    // params (the consumer's config block merged under task params).
+    String src;
+    String entry;
+    String classpath;
+    String profile;
+    String out;
+    String cocoHome;
+    int64 min;
+    ArrayList<String> excludes;
+
+    Request() {
+        this.action #= "";
+        this.workdir #= ".";
+        this.src #= "";
+        this.entry #= "";
+        this.classpath #= "";
+        this.profile #= "";
+        this.out #= "build/coco";
+        this.cocoHome #= "";
+        this.min = 0;
+        this.excludes #= heap ArrayList<String>();
+    }
+
+    public static #Request parse(int8[] buf, int64 n) {
+        Request r #= heap Request();
+        JsonReader jr = stack JsonReader(buf, n);
+
+        // Sections: 0 top level, 1 params, 2 context. `inExclude` gates the
+        // string-array collection under params.exclude.
+        int32 depth = 0;
+        int32 section = 0;
+        int32 field = 0;
+        boolean inExclude = false;
+
+        int32 t = (int32) jr.next();
+        while (t != 9) {
+            if (t == 0 || t == 2) {                       // { or [
+                depth = depth + 1;
+            } else if (t == 1 || t == 3) {                // } or ]
+                depth = depth - 1;
+                if (t == 3) { inExclude = false; }
+                if (depth == 1) { section = 0; }
+            } else if (t == 4) {                          // KEY
+                String name #= jr.currentString();
+                if (depth == 1) {
+                    if (name.equals("action")) { field = 1; }
+                    else if (name.equals("params")) { section = 1; field = 0; }
+                    else if (name.equals("context")) { section = 2; field = 0; }
+                    else { field = 0; }
+                } else if (depth == 2 && section == 1) {
+                    if (name.equals("src")) { field = 2; }
+                    else if (name.equals("entry")) { field = 3; }
+                    else if (name.equals("classpath")) { field = 4; }
+                    else if (name.equals("profile")) { field = 5; }
+                    else if (name.equals("out")) { field = 6; }
+                    else if (name.equals("coco-home")) { field = 7; }
+                    else if (name.equals("min")) { field = 8; }
+                    else if (name.equals("exclude")) { inExclude = true; field = 0; }
+                    else { field = 0; }
+                } else if (depth == 2 && section == 2) {
+                    if (name.equals("workdir")) { field = 9; }
+                    else { field = 0; }
+                } else {
+                    field = 0;
+                }
+            } else if (t == 5) {                          // STRING
+                if (inExclude && depth == 3 && section == 1) {
+                    r.excludes.add(jr.currentString());
+                } else if (field == 1) { r.action #= jr.currentString(); }
+                else if (field == 2) { r.src #= jr.currentString(); }
+                else if (field == 3) { r.entry #= jr.currentString(); }
+                else if (field == 4) { r.classpath #= jr.currentString(); }
+                else if (field == 5) { r.profile #= jr.currentString(); }
+                else if (field == 6) { r.out #= jr.currentString(); }
+                else if (field == 7) { r.cocoHome #= jr.currentString(); }
+                else if (field == 9) { r.workdir #= jr.currentString(); }
+                field = 0;
+            } else if (t == 6) {                          // NUMBER
+                if (field == 8) { r.min = jr.currentNumberAsInt64(); }
+                field = 0;
+            } else {
+                field = 0;
+            }
+            t = (int32) jr.next();
+        }
+        return #r;
+    }
+}

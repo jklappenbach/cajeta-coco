@@ -1,0 +1,332 @@
+package cajeta.coco.plugin;
+
+import cajeta.codec.json.JsonReader;
+import cajeta.coco.analysis.CallGraph;
+import cajeta.coco.analysis.Coverage;
+import cajeta.coco.analysis.FileStats;
+import cajeta.coco.model.HitProfile;
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteKind;
+import cajeta.coco.model.SiteTable;
+import cajeta.coco.report.Html;
+import cajeta.coco.report.Lcov;
+import cajeta.coco.report.Sarif;
+import cajeta.coco.util.Io;
+import cajeta.coco.util.Text;
+import cajeta.collection.ArrayList;
+import cajeta.io.file.FileReader;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+import cajeta.lang.System;
+import cajeta.process.Command;
+import cajeta.process.ProcessResult;
+
+/**
+ * The build-tool plugin protocol host — what makes coco a JaCoCo-style
+ * manifest-declared plugin instead of a hand-run tool.
+ *
+ * The build tool resolves `plugins.cajeta.coverage` from a repository,
+ * spawns the binary its sidecar names, writes ONE JSON request on stdin
+ * (action, params — the consumer's config block merged under the task's
+ * explicit params — and context.workdir), and reads JSON-line records
+ * back: log / output / finding / result. This class speaks that protocol
+ * (PluginRuntime.cpp is the canonical spec) and maps two actions onto
+ * coco:
+ *
+ *   cajeta.coverage.instrument — the whole measured pipeline: compile,
+ *       instrument, link, run the suite, merge profiles, attribution.
+ *       Delegated to `bin/coco run` as a subprocess: the orchestration
+ *       already exists there, and a subprocess plugin's entire reason to
+ *       exist is that it may spawn things. Fails the task when the suite
+ *       fails.
+ *
+ *   cajeta.coverage.report — in-process render (this binary IS the
+ *       report engine): HTML + lcov + SARIF from the run's artifacts,
+ *       then the `min` gate — below-threshold line coverage returns a
+ *       logical error, which fails the build. That is the JaCoCo
+ *       `check` semantic.
+ *
+ * Params (config block or per-action): src, entry, classpath, profile,
+ * exclude[], out (default build/coco), coco-home (checkout holding
+ * bin/coco), min (percent gate, report only).
+ */
+public class PluginHost {
+
+    /** Entry: read the request, dispatch, always end with a result line. */
+    public static void serve() {
+        int8[] req #= PluginHost.readAllStdin();
+        int64 n = req.count();
+        if (n == 0) {
+            PluginHost.resultError("empty request on stdin");
+            return;
+        }
+
+        Request r #= Request.parse(req, n);
+
+        if (r.action.equals("cajeta.coverage.instrument")) {
+            PluginHost.instrument(r);
+        } else if (r.action.equals("cajeta.coverage.report")) {
+            PluginHost.report(r);
+        } else {
+            PluginHost.resultError("unknown action: " + r.action);
+        }
+    }
+
+    // ── instrument ─────────────────────────────────────────────
+
+    static void instrument(Request r) {
+        if (r.src.byteLength() == 0 || r.entry.byteLength() == 0) {
+            PluginHost.resultError("instrument: config must set 'src' and 'entry'");
+            return;
+        }
+        if (r.cocoHome.byteLength() == 0) {
+            PluginHost.resultError("instrument: config must set 'coco-home' (the cajeta-coco checkout)");
+            return;
+        }
+
+        PluginHost.log("coco: instrumenting " + r.src + " (entry " + r.entry + ")");
+
+        // argv: <coco-home>/bin/coco run --src S --entry E [--classpath C]
+        // [--profile P] [--exclude X]* --out O
+        int32 argc = 8;
+        if (r.classpath.byteLength() > 0) { argc = argc + 2; }
+        if (r.profile.byteLength() > 0) { argc = argc + 2; }
+        argc = argc + r.excludes.count() * 2;
+
+        String[] argv = heap String[argc];
+        int32 i = 0;
+        argv[i] #= r.cocoHome + "/bin/coco";    i = i + 1;
+        argv[i] #= "run";                       i = i + 1;
+        argv[i] #= "--src";                     i = i + 1;
+        argv[i] #= r.src.substring(0, r.src.byteLength());   i = i + 1;
+        argv[i] #= "--entry";                   i = i + 1;
+        argv[i] #= r.entry.substring(0, r.entry.byteLength()); i = i + 1;
+        if (r.classpath.byteLength() > 0) {
+            argv[i] #= "--classpath";           i = i + 1;
+            argv[i] #= r.classpath.substring(0, r.classpath.byteLength()); i = i + 1;
+        }
+        if (r.profile.byteLength() > 0) {
+            argv[i] #= "--profile";             i = i + 1;
+            argv[i] #= r.profile.substring(0, r.profile.byteLength()); i = i + 1;
+        }
+        int32 x = 0;
+        while (x < r.excludes.count()) {
+            argv[i] #= "--exclude";             i = i + 1;
+            String ex = r.excludes.get(x);
+            argv[i] #= ex.substring(0, ex.byteLength()); i = i + 1;
+            x = x + 1;
+        }
+        argv[i] #= "--out";                     i = i + 1;
+        argv[i] #= r.out.substring(0, r.out.byteLength());
+
+        Command cmd = heap Command(#argv);
+        cmd.captureStdout();
+        cmd.captureStderr();
+        String wd #= r.workdir.substring(0, r.workdir.byteLength());
+        cmd.workingDir(#wd);
+
+        ProcessResult res = cmd.run();
+        if (res.launched() == false) {
+            PluginHost.resultError("instrument: failed to launch bin/coco (check coco-home)");
+            return;
+        }
+
+        int8[] outBytes = res.stdout();
+        String outText #= "";
+        if (outBytes != null) {
+            String tmp #= PluginHost.bytesToString(outBytes, (int32) outBytes.count());
+            outText #= tmp;
+        }
+        PluginHost.forwardCocoLog(outText);
+
+        if (res.code() != 0) {
+            PluginHost.resultError("instrument: coco run failed (exit "
+                                   + Text.fromInt((int64) res.code()) + ")");
+            return;
+        }
+
+        // The measured suite's exit code rides in the driver's transcript.
+        int64 suiteExit = Text.intAfter(outText, "coco: exit ");
+        if (suiteExit != 0) {
+            PluginHost.resultError("tests failed under instrumentation (suite exit "
+                                   + Text.fromInt(suiteExit) + ")");
+            return;
+        }
+
+        PluginHost.output("path", r.out + "/measured");
+        PluginHost.output("sites", r.out + "/sites.tsv");
+        PluginHost.output("report", r.out + "/coverage.html");
+        PluginHost.resultOk();
+    }
+
+    // ── report ─────────────────────────────────────────────────
+
+    static void report(Request r) {
+        String base #= r.workdir + "/" + r.out;
+        String sitesText #= Io.readAll(base + "/sites.tsv");
+        if (sitesText.byteLength() == 0) {
+            PluginHost.resultError("report: no sites at " + base
+                                   + "/sites.tsv (did instrument run?)");
+            return;
+        }
+        ArrayList<Site> sites #= SiteTable.decode(sitesText);
+
+        // Prefer the attribution-merged profile when present.
+        String profText #= Io.readAll(base + "/run/coco.merged.profile");
+        if (profText.byteLength() == 0) {
+            profText #= Io.readAll(base + "/run/coco.profile");
+        }
+        HitProfile profile #= HitProfile.decode(profText, "all");
+
+        CallGraph graph = null;
+        ArrayList<String> reachable #= heap ArrayList<String>();
+        if (r.entry.byteLength() > 0) {
+            // owner::method from pkg.Class.method
+            int32 lastDot = PluginHost.lastDot(r.entry);
+            if (lastDot > 0) {
+                String eOwner #= r.entry.substring(0, lastDot);
+                String eName #= r.entry.substring(lastDot + 1, r.entry.byteLength());
+                CallGraph g #= CallGraph.parseFile(base + "/xref.json");
+                ArrayList<String> executed #= heap ArrayList<String>();
+                int32 si = 0;
+                while (si < sites.count()) {
+                    Site st = sites.get(si);
+                    if (st.getKind() == SiteKind.FUNCTION
+                        && profile.covered(st.getId())) {
+                        executed.add(CallGraph.keyOf(st.getOwner(), st.getMethod()));
+                    }
+                    si = si + 1;
+                }
+                ArrayList<String> rr #= g.reachableFrom(eOwner, eName, executed);
+                if (g.edgeCount() > 0 && rr.count() > 0) {
+                    reachable #= rr;
+                    graph #= g;
+                }
+            }
+        }
+
+        ArrayList<FileStats> stats #= Coverage.summarize(sites, profile);
+        String html #= Html.render(sites, profile, stats, graph, reachable);
+        Io.writeAll(base + "/coverage.html", html);
+        String lcov #= Lcov.render(sites, profile);
+        Io.writeAll(base + "/lcov.info", lcov);
+        String sarif #= Sarif.render(sites, profile, stats, graph, reachable);
+        Io.writeAll(base + "/coverage.sarif", sarif);
+
+        int64 lc = Coverage.totalLinesCovered(stats);
+        int64 lt = Coverage.totalLines(stats);
+        String pct #= Text.percent(lc, lt);
+        PluginHost.log("coverage: " + pct + "% lines ("
+                       + Text.fromInt(lc) + "/" + Text.fromInt(lt) + ")");
+        PluginHost.output("percent", pct);
+        PluginHost.output("html-path", r.out + "/coverage.html");
+        PluginHost.output("lcov-path", r.out + "/lcov.info");
+        PluginHost.output("sarif-path", r.out + "/coverage.sarif");
+
+        // The gate: JaCoCo-check semantics. Integer compare against the
+        // integer part so 79.9% fails a min of 80.
+        if (r.min > 0) {
+            int64 gate = 0;
+            if (lt > 0) { gate = (lc * 100) / lt; }
+            if (gate < r.min) {
+                PluginHost.resultError("coverage " + pct
+                                       + "% is below min " + Text.fromInt(r.min) + "%");
+                return;
+            }
+        }
+        PluginHost.resultOk();
+    }
+
+    static int32 lastDot(String s) {
+        int32 at = -1;
+        int32 i = 0;
+        while (i < s.byteLength()) {
+            if (s.byteAt(i) == 46) { at = i; }
+            i = i + 1;
+        }
+        return at;
+    }
+
+    // ── protocol plumbing ──────────────────────────────────────
+
+    /** Read stdin to EOF. Pipes deliver in chunks; loop until zero. */
+    static #int8[] readAllStdin() {
+        FileReader r = heap FileReader(0);
+        int32 cap = 65536;
+        int8[] buf #= heap int8[cap];
+        int32 len = 0;
+        int8[] chunk #= heap int8[16384];
+        int32 got = r.read(chunk, 16384);
+        while (got > 0) {
+            if (len + got > cap) {
+                int32 next = cap * 2;
+                while (next < len + got) { next = next * 2; }
+                int8[] bigger #= heap int8[next];
+                int32 i = 0;
+                while (i < len) {
+                    bigger[i] = buf[i];
+                    i = i + 1;
+                }
+                buf #= bigger;
+                cap = next;
+            }
+            int32 i = 0;
+            while (i < got) {
+                buf[len + i] = chunk[i];
+                i = i + 1;
+            }
+            len = len + got;
+            got = r.read(chunk, 16384);
+        }
+        int8[] exact #= heap int8[len];
+        int32 i = 0;
+        while (i < len) {
+            exact[i] = buf[i];
+            i = i + 1;
+        }
+        return #exact;
+    }
+
+    static #String bytesToString(int8[] borrowed, int32 n) {
+        int8[] copy #= heap int8[n];
+        int32 i = 0;
+        while (i < n) {
+            copy[i] = borrowed[i];
+            i = i + 1;
+        }
+        return heap String(#copy, n);
+    }
+
+    /** Forward the driver's `coco:` transcript lines as protocol logs. */
+    static void forwardCocoLog(String transcript) {
+        ArrayList<String> lines #= Text.splitLines(transcript);
+        int32 i = 0;
+        while (i < lines.count()) {
+            String l = lines.get(i);
+            if (l.startsWith("coco:") || l.startsWith("Tests:")) {
+                PluginHost.log(l);
+            }
+            i = i + 1;
+        }
+    }
+
+    static void log(String message) {
+        System.stdout.println("{\"kind\":\"log\",\"level\":\"info\",\"message\":\""
+                              + Text.jsonEscape(message) + "\"}");
+    }
+
+    static void output(String key, String value) {
+        System.stdout.println("{\"kind\":\"output\",\"key\":\""
+                              + Text.jsonEscape(key) + "\",\"value\":\""
+                              + Text.jsonEscape(value) + "\"}");
+    }
+
+    static void resultOk() {
+        System.stdout.println("{\"kind\":\"result\",\"status\":\"ok\"}");
+    }
+
+    static void resultError(String message) {
+        System.stdout.println("{\"kind\":\"result\",\"status\":\"error\",\"message\":\""
+                              + Text.jsonEscape(message) + "\"}");
+    }
+}

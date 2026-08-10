@@ -1,0 +1,17 @@
+package cajeta.coverage;
+
+/**
+ * Marker class for the cajeta.coverage plugin package.
+ *
+ * The package's real machinery is the sidecar manifest's plugin block: the
+ * build tool spawns `details.plugin.binary` (the coco engine's plugin-host)
+ * and speaks the subprocess protocol with it. This class exists so the
+ * package archive has honest content and a place for package-level docs:
+ * coverage instrumentation, reporting and gating are provided by
+ * cajeta-coco (dev.cajeta.coco), which this plugin adapts to the build
+ * tool's action contracts.
+ */
+public class Plugin {
+    /** Plugin protocol major version this package speaks. */
+    public static int32 protocolVersion() { return 1; }
+}

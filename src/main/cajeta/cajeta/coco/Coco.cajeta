@@ -12,6 +12,7 @@ import cajeta.coco.model.HitProfile;
 import cajeta.coco.model.Site;
 import cajeta.coco.model.SiteKind;
 import cajeta.coco.model.SiteTable;
+import cajeta.coco.plugin.PluginHost;
 import cajeta.coco.report.Html;
 import cajeta.coco.report.Lcov;
 import cajeta.coco.report.Annotate;
@@ -69,6 +70,8 @@ public class Coco {
             Coco.cmdSarif(args, at);
         } else if (cmd.equals("annotate")) {
             Coco.cmdAnnotate(args, at);
+        } else if (cmd.equals("plugin-host")) {
+            PluginHost.serve();
         } else if (cmd.equals("hook-tests")) {
             Coco.cmdHookTests(args, at);
         } else if (cmd.equals("merge")) {
@@ -93,6 +96,7 @@ public class Coco {
             if (a.equals("lcov")) { return i; }
             if (a.equals("sarif")) { return i; }
             if (a.equals("annotate")) { return i; }
+            if (a.equals("plugin-host")) { return i; }
             if (a.equals("attribution")) { return i; }
             if (a.equals("merge")) { return i; }
             if (a.equals("hook-tests")) { return i; }

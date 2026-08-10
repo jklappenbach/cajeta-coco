@@ -1,0 +1,39 @@
+{
+    "details": {
+        "name":               "cajeta.coverage",
+        "version":            "0.1.0",
+        "description":        "Coverage instrumentation, reporting and gating for cajeta test tasks — backed by cajeta-coco",
+        "license":            "Apache-2.0",
+        "authors":            ["jklappenbach"],
+        "cajeta-lang-version": "1.0",
+
+        "plugin": {
+            "id": "cajeta.coverage",
+            "binary": "/home/julian/code/cajeta/cajeta-coco/plugin/coco-plugin",
+            "actions": [
+                "cajeta.coverage.instrument",
+                "cajeta.coverage.report"
+            ],
+            "entries": {
+                "cajeta.coverage.instrument": "cajeta.coco.plugin.PluginHost::serve",
+                "cajeta.coverage.report":     "cajeta.coco.plugin.PluginHost::serve"
+            }
+        }
+    },
+
+    "settings": {
+        "capabilities": ["process", "filesystem"],
+        "dependencies": {},
+        "repositories": [
+            { "name": "central", "url": "https://olla.cajeta.dev", "priority": 0 }
+        ]
+    },
+
+    "tasks": {
+        "build": {
+            "description": "Build the plugin package archive",
+            "actions": [ { "action": "build", "flavor": "debug", "id": "art" } ],
+            "outputs": { "path": "${art.path}" }
+        }
+    }
+}
