@@ -3,7 +3,7 @@
     // (per BuildTool.md "Default cajeta init manifest").
 
     "details": {
-        "name":               "com.example.basic",
+        "name":               "dev.cajeta.coco",
         "version":            "0.1.0",
         "description":        "Single-package buildtool sample",
         "license":            "Apache-2.0",
@@ -32,7 +32,9 @@
         // the parts your code actually uses are linked into the binary
         // (dead-code elimination). The stdlib API level is pinned by
         // `details.cajeta-lang-version` above.
-        "dependencies": {},
+        "dependencies": {
+            "dev.cajeta.xref": "0.1.0"
+        },
 
         "dev-dependencies": {
             "cajeta.testkit": "1.0.*"
@@ -53,7 +55,6 @@
 
         "build": {
             "target":       "host",
-            "entry-method": "com.example.basic.Main::main"
         }
     },
 
