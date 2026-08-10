@@ -1,0 +1,190 @@
+package cajeta.coco.rt;
+
+import cajeta.io.file.File;
+import cajeta.io.file.FileWriter;
+import cajeta.io.file.OpenMode;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+
+/**
+ * Writes the probe counter table out at the end of an instrumented run.
+ *
+ * ## Why this class is deliberately self-contained
+ *
+ * Everything under `cajeta.coco.rt` is linked into the *measured program*, not
+ * into the coco tool, and it is the one package the instrumenter never rewrites.
+ * If the dumper called shared helpers from `cajeta.coco.util`, those helpers
+ * would be instrumented in a self-coverage run and their probes would fire
+ * *while the table is being serialized* — counters mutating mid-iteration. So
+ * the small amount of integer formatting needed here is reimplemented locally
+ * rather than shared. The duplication is the point.
+ *
+ * ## Wire format (`coco-profile v1`)
+ *
+ *     coco-profile v1
+ *     size <n>
+ *     <probe-id> <hit-count>
+ *     ...
+ *
+ * Only non-zero counters are written — a run touching 4% of a large table
+ * should not pay for the other 96%. Absent ids read back as zero.
+ *
+ * The output path is fixed (`coco.profile`) and resolved against the process's
+ * working directory, which coco sets per run. That keeps the injected call
+ * argument-free: emitting a string constant into every instrumented module,
+ * just to name a file, would be far more IR surgery than the problem deserves.
+ */
+public class ProbeDump {
+
+    /** File name written into the process's working directory. */
+    public static #String fileName() { return "coco.profile"; }
+
+    /** Per-test dumps written so far — names the next `coco-test-NNNN.profile`. */
+    static int64 testSeq = 0;
+
+    /**
+     * Per-test attribution hook.
+     *
+     * coco injects a call to this at the entry of cajeta-unit's
+     * `Runner::recordResult` — the one point the framework passes through
+     * exactly once per executed test, name in hand. The counters at that
+     * moment are the delta since the previous test's dump (construction,
+     * `@BeforeEach`, body, `@AfterEach` — everything that test caused), so:
+     * write them out labeled with the test's name, then reset for the next
+     * test. The aggregate profile is recovered by merging the per-test dumps
+     * with the final residue `coco.profile`.
+     *
+     * The injection is IR-level, into the framework's own bitcode from the
+     * classpath archive — cajeta-unit itself is unmodified.
+     */
+    public static void onTest(String name) {
+        StringBuilder sb = heap StringBuilder();
+        sb.append("coco-profile v1\n");
+        sb.append("test ");
+        sb.append(name);
+        sb.append("\nsize ");
+        sb.append(ProbeDump.intToString(Probe.size()));
+        sb.append("\n");
+        int64 i = 0;
+        int64 n = Probe.size();
+        while (i < n) {
+            int64 c = Probe.countOf(i);
+            if (c != 0) {
+                sb.append(ProbeDump.intToString(i));
+                sb.append(" ");
+                sb.append(ProbeDump.intToString(c));
+                sb.append("\n");
+            }
+            i = i + 1;
+        }
+
+        StringBuilder fn = heap StringBuilder();
+        fn.append("coco-test-");
+        fn.append(ProbeDump.padded(ProbeDump.testSeq));
+        fn.append(".profile");
+        ProbeDump.testSeq = ProbeDump.testSeq + 1;
+
+        String text #= sb.toString();
+        // NUL-terminate the built path: the file-open intrinsic reads the
+        // String's bytes as a C string (see Io.cstr in the engine; this
+        // runtime is self-contained by design, so the copy is local).
+        String raw #= fn.toString();
+        int32 pn = raw.byteLength();
+        int8[] pbuf #= heap int8[pn + 1];
+        int32 pi = 0;
+        while (pi < pn) {
+            pbuf[pi] = raw.byteAt(pi);
+            pi = pi + 1;
+        }
+        pbuf[pn] = 0;
+        String path #= heap String(#pbuf, pn);
+        FileWriter w = File.openWrite(path, OpenMode.WRITE);
+        w.writeString(text);
+        w.flush();
+        w.close();
+
+        Probe.reset();
+    }
+
+    /** Four-digit zero-padded rendering, so shell globs sort correctly. */
+    static #String padded(int64 v) {
+        int8[] outb #= heap int8[4];
+        int64 x = v;
+        int32 k = 3;
+        while (k >= 0) {
+            outb[k] = (int8) (48 + (int32) (x % 10));
+            x = x / 10;
+            k = k - 1;
+        }
+        return heap String(#outb, 4);
+    }
+
+    /**
+     * Serialize the live counter table. Injected by the instrumenter before
+     * every `ret` of the measured program's entry method.
+     */
+    public static void dump() {
+        // Heap, not `stack`, deliberately. A stack-allocated class needs a
+        // per-type `__cajeta_stack_<Type>_drop` shim, which the compiler emits
+        // on demand into the stdlib module of whatever project uses it. This
+        // runtime is linked into OTHER projects' binaries, and a project that
+        // never writes `stack StringBuilder()` itself would not have that shim
+        // — an undefined symbol at link time, in someone else's build. Heap
+        // allocation goes through the ordinary drop path, which always exists.
+        StringBuilder sb #= heap StringBuilder();
+        sb.append("coco-profile v1\n");
+        sb.append("size ");
+        sb.append(ProbeDump.intToString(Probe.size()));
+        sb.append("\n");
+
+        int64 i = 0;
+        int64 n = Probe.size();
+        while (i < n) {
+            int64 c = Probe.countOf(i);
+            if (c != 0) {
+                sb.append(ProbeDump.intToString(i));
+                sb.append(" ");
+                sb.append(ProbeDump.intToString(c));
+                sb.append("\n");
+            }
+            i = i + 1;
+        }
+
+        String text #= sb.toString();
+        String path #= ProbeDump.fileName();
+        FileWriter w = File.openWrite(path, OpenMode.WRITE);
+        w.writeString(text);
+        w.flush();
+        w.close();
+    }
+
+    /**
+     * Decimal rendering. Local by design — see the class doc on why this is not
+     * shared with `cajeta.coco.util.Text`.
+     */
+    static #String intToString(int64 v) {
+        if (v == 0) { return "0"; }
+        boolean neg = v < 0;
+        int64 x = v;
+        if (neg) { x = 0 - x; }
+        int8[] tmp #= heap int8[24];
+        int32 w = 0;
+        while (x > 0) {
+            tmp[w] = (int8) (48 + (int32) (x % 10));
+            x = x / 10;
+            w = w + 1;
+        }
+        int32 total = w;
+        if (neg) { total = total + 1; }
+        int8[] outb #= heap int8[total];
+        int32 o = 0;
+        if (neg) { outb[0] = 45; o = 1; }
+        int32 k = w;
+        while (k > 0) {
+            outb[o] = tmp[k - 1];
+            o = o + 1;
+            k = k - 1;
+        }
+        return heap String(#outb, total);
+    }
+}

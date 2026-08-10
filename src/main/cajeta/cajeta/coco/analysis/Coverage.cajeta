@@ -1,0 +1,226 @@
+package cajeta.coco.analysis;
+
+import cajeta.coco.model.HitProfile;
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteKind;
+import cajeta.coco.util.IntList;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+
+/**
+ * Folds a probe map plus a profile into per-file coverage.
+ *
+ * ## Line coverage is a fold, not a count
+ *
+ * One source line can carry several probes — a statement inside a loop body, a
+ * condition that lowered into more than one block. A line counts as covered
+ * when *any* of its probes fired, so the pass groups by line before scoring.
+ * Counting probes instead of lines would silently weight complex lines more
+ * heavily than simple ones and make the headline number incomparable with
+ * every other coverage tool.
+ *
+ * Grouping is done with linear scans over per-file line lists rather than a
+ * hash map. Files have hundreds of lines, not millions, and the ordering falls
+ * out for free — reports want ascending line numbers anyway.
+ */
+public class Coverage {
+
+    /**
+     * Per-file statistics for every file mentioned by `sites`.
+     *
+     * `profile` may be shorter than the site table (an old profile against new
+     * instrumentation); missing ids read as zero, so a stale profile degrades
+     * to "uncovered" rather than to a crash.
+     */
+    public static #ArrayList<FileStats> summarize(ArrayList<Site> sites, HitProfile profile) {
+        ArrayList<String> files #= Coverage.distinctFiles(sites);
+        ArrayList<FileStats> out #= heap ArrayList<FileStats>();
+
+        int32 f = 0;
+        while (f < files.count()) {
+            String file = files.get(f);
+            int32 bound = sites.count();
+            FileStats st #= heap FileStats(file.substring(0, file.byteLength()), bound);
+
+            // Distinct lines, and whether any probe on each fired.
+            IntList lineNums #= heap IntList(bound);
+            IntList lineHit #= heap IntList(bound);
+            // Branch arms grouped by line, to spot partially-covered decisions.
+            IntList brLine #= heap IntList(bound);
+            IntList brTotal #= heap IntList(bound);
+            IntList brHit #= heap IntList(bound);
+
+            int32 i = 0;
+            while (i < sites.count()) {
+                Site s = sites.get(i);
+                if (s.getFile().equals(file)) {
+                    boolean hit = profile.covered(s.getId());
+
+                    // Compared inline rather than bound to a local: a local of
+                    // enum type crashes the 0.18.1 compiler in codegen
+                    // (HeapField::getOrCreateAllocation, SIGSEGV).
+                    if (s.getKind() == SiteKind.LINE) {
+                        Coverage.accumulate(lineNums, lineHit, s.getLine(), hit);
+                    } else if (s.getKind() == SiteKind.FUNCTION) {
+                        st.addFunction(hit);
+                        if (hit == false) {
+                            st.getUncoveredMethods().add(s.qualified());
+                        }
+                    } else {
+                        st.addBranch(hit);
+                        Coverage.accumulateBranch(brLine, brTotal, brHit, s.getLine(), hit);
+                    }
+                }
+                i = i + 1;
+            }
+
+            // Score lines and collect the uncovered ones, ascending.
+            IntList order #= Coverage.ascending(lineNums);
+            int32 k2 = 0;
+            while (k2 < order.count()) {
+                int64 ln = order.get(k2);
+                int32 at = Coverage.indexOfLine(lineNums, ln);
+                boolean covered = lineHit.get(at) > 0;
+                st.addLine(covered);
+                if (covered == false) { st.getUncoveredLines().add(ln); }
+                k2 = k2 + 1;
+            }
+
+            // A line whose branch arms were only partly taken is the single
+            // most actionable thing in a coverage report: the code ran, so it
+            // looks green at line grain, but a path through it was never tested.
+            int32 b = 0;
+            while (b < brLine.count()) {
+                int64 tot = brTotal.get(b);
+                int64 hitN = brHit.get(b);
+                if (hitN > 0 && hitN < tot) {
+                    st.getPartialBranchLines().add(brLine.get(b));
+                }
+                b = b + 1;
+            }
+
+            out.add(#st);
+            f = f + 1;
+        }
+        return #out;
+    }
+
+    /** Record that `line` has another probe, ORing in whether it fired. */
+    static void accumulate(IntList nums, IntList hits,
+                           int64 line, boolean hit) {
+        int32 at = Coverage.indexOfLine(nums, line);
+        if (at < 0) {
+            nums.add(line);
+            if (hit) { hits.add(1); } else { hits.add(0); }
+            return;
+        }
+        if (hit) { hits.set(at, 1); }
+    }
+
+    /** Tally one branch arm against its source line. */
+    static void accumulateBranch(IntList nums, IntList totals,
+                                 IntList hits, int64 line, boolean hit) {
+        int32 at = Coverage.indexOfLine(nums, line);
+        if (at < 0) {
+            nums.add(line);
+            totals.add(1);
+            if (hit) { hits.add(1); } else { hits.add(0); }
+            return;
+        }
+        totals.set(at, totals.get(at) + 1);
+        if (hit) { hits.set(at, hits.get(at) + 1); }
+    }
+
+    static int32 indexOfLine(IntList nums, int64 line) {
+        return nums.indexOf(line);
+    }
+
+    /** Line numbers in ascending order — reports read top-to-bottom. */
+    static #IntList ascending(IntList src) {
+        IntList out #= heap IntList(src.count());
+        int32 i = 0;
+        while (i < src.count()) {
+            out.insertSorted(src.get(i));
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /** Distinct source files referenced by the site table, in first-seen order. */
+    static #ArrayList<String> distinctFiles(ArrayList<Site> sites) {
+        ArrayList<String> out #= heap ArrayList<String>();
+        int32 i = 0;
+        while (i < sites.count()) {
+            String f = sites.get(i).getFile();
+            if (f.byteLength() > 0 && Coverage.containsFile(out, f) == false) {
+                out.add(f.substring(0, f.byteLength()));
+            }
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    static boolean containsFile(ArrayList<String> list, String f) {
+        int32 i = 0;
+        while (i < list.count()) {
+            if (list.get(i).equals(f)) { return true; }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    /**
+     * Ground-truth class liveness: did ANY method of `owner` execute?
+     *
+     * Compile-time DI and reflection construct components through synthesized
+     * paths that bypass source constructors, so a constructor probe can read
+     * zero on a class whose instances demonstrably exist (cajeta-logging's
+     * @TestComponent CapturingAppender: ctor 0 hits, append 5). A "dead"
+     * claim on any member of a class with executed methods would be wrong
+     * with confidence — this is the guard that prevents it.
+     */
+    public static boolean classAlive(ArrayList<Site> sites, HitProfile profile,
+                                     String owner) {
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site s = sites.get(i);
+            if (s.getKind() == SiteKind.FUNCTION
+                && s.getOwner().equals(owner)
+                && profile.covered(s.getId())) {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    /** Total covered lines across all files. */
+    public static int64 totalLinesCovered(ArrayList<FileStats> stats) {
+        int64 n = 0;
+        int32 i = 0;
+        while (i < stats.count()) { n = n + stats.get(i).getLinesCovered(); i = i + 1; }
+        return n;
+    }
+
+    /** Total measurable lines across all files. */
+    public static int64 totalLines(ArrayList<FileStats> stats) {
+        int64 n = 0;
+        int32 i = 0;
+        while (i < stats.count()) { n = n + stats.get(i).getLinesTotal(); i = i + 1; }
+        return n;
+    }
+
+    public static int64 totalBranchesCovered(ArrayList<FileStats> stats) {
+        int64 n = 0;
+        int32 i = 0;
+        while (i < stats.count()) { n = n + stats.get(i).getBranchesCovered(); i = i + 1; }
+        return n;
+    }
+
+    public static int64 totalBranches(ArrayList<FileStats> stats) {
+        int64 n = 0;
+        int32 i = 0;
+        while (i < stats.count()) { n = n + stats.get(i).getBranchesTotal(); i = i + 1; }
+        return n;
+    }
+}

@@ -1,0 +1,36 @@
+package cajeta.coco.ir;
+
+/**
+ * Monotonic probe-id source, shared across every module in one instrumentation
+ * pass.
+ *
+ * Ids must be dense and globally unique because the runtime counter table is a
+ * flat array indexed by id — the whole point of the design is that a probe hit
+ * costs one bounds check and one increment. A per-module counter would collide;
+ * a hash would cost more than the measurement.
+ */
+public class IdGen {
+    int64 next;
+
+    public IdGen() { this.next = 0; }
+
+    /** Claim the next id. */
+    public int64 take() {
+        int64 v = this.next;
+        this.next = this.next + 1;
+        return v;
+    }
+
+    /** How many ids have been handed out — the table size the runtime needs. */
+    public int64 count() { return this.next; }
+
+    /**
+     * Resume id assignment at `from`.
+     *
+     * Modules are instrumented one at a time, so each run has to continue where
+     * the previous one stopped or the flat counter table would collide.
+     */
+    public void seed(int64 from) {
+        if (from > 0) { this.next = from; }
+    }
+}

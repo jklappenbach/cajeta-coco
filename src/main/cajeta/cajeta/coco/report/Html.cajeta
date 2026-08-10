@@ -1,0 +1,536 @@
+package cajeta.coco.report;
+
+import cajeta.coco.analysis.CallGraph;
+import cajeta.coco.analysis.Conditions;
+import cajeta.coco.analysis.Coverage;
+import cajeta.coco.analysis.Crap;
+import cajeta.coco.analysis.FileStats;
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteKind;
+import cajeta.coco.model.HitProfile;
+import cajeta.coco.util.IntList;
+import cajeta.coco.util.Text;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+
+/**
+ * Self-contained HTML coverage report.
+ *
+ * ## Visual design decisions
+ *
+ * **Status, not categorical, colors.** Covered / partial / uncovered is a state
+ * encoding, so it uses the reserved status palette (`#0ca30c` good,
+ * `#fab219` warning, `#d03b3b` critical) rather than categorical series hues.
+ * The trio clears CVD separation (worst adjacent pair ΔE 11.3 protan, 24.4
+ * tritan) and the normal-vision floor (ΔE 27.6). Warning sits below 3:1 on the
+ * light surface by design, so **every colored element is paired with a visible
+ * count or label** and the per-file table doubles as the table view — colour
+ * never carries meaning alone.
+ *
+ * **The line ribbon.** One cell per measurable line, in source order. This is
+ * the answer to "which lines are unexercised" as a picture: a file's untested
+ * regions show up as contiguous red runs, which is exactly how untested code
+ * actually clusters (a whole method, a whole error path). A percentage cannot
+ * show that shape, and an annotated source listing buries it in scrolling.
+ *
+ * **Worst-first ordering.** Files are sorted by ascending line coverage, so the
+ * report opens on the work rather than on a wall of green.
+ */
+public class Html {
+
+    /**
+     * Render the full report document.
+     *
+     * `graph`/`reachable` are the static-reachability inputs; pass null/empty
+     * when no xref was captured and the report degrades to plain coverage —
+     * every uncovered method is then presented as untested, never as dead,
+     * because "dead" is a claim that needs the call graph behind it.
+     */
+    public static #String render(ArrayList<Site> sites, HitProfile profile,
+                                 ArrayList<FileStats> stats,
+                                 CallGraph graph, ArrayList<String> reachable) {
+        StringBuilder sb #= heap StringBuilder();
+        Conditions conds #= Conditions.analyze(sites, profile);
+        Html.head(sb);
+        Html.summary(sb, stats, conds);
+        Html.fileTable(sb, stats);
+        Html.crapTable(sb, sites, profile);
+        Html.conditionTable(sb, conds);
+        Html.perFile(sb, sites, profile, stats, graph, reachable);
+        sb.append("</main></body></html>\n");
+        return sb.toString();
+    }
+
+    /**
+     * Leaf conditions of `&&`/`||` decisions that never took one of their
+     * outcomes. This is information branch coverage cannot show: the decision
+     * line can be fully green at branch grain while a short-circuited operand
+     * was never false (or never evaluated at all). Derived arithmetically
+     * from edge counts — see `Conditions` — so it costs no extra probes.
+     */
+    static void conditionTable(StringBuilder sb, Conditions conds) {
+        // Count the gaps first; render nothing when every condition is green.
+        int32 gaps = 0;
+        int32 i = 0;
+        while (i < conds.count()) {
+            if (conds.derivableAt(i) && conds.coveredAt(i) == false) {
+                gaps = gaps + 1;
+            }
+            i = i + 1;
+        }
+        if (gaps == 0) { return; }
+
+        sb.append("<h2>Short-circuit conditions missing an outcome</h2>");
+        sb.append("<p class=\"sub\">operands of <code>&amp;&amp;</code>/<code>||</code> whose true/false split is derived from edge counts; \"condition 2\" is the right-hand operand</p>");
+        sb.append("<div class=\"wrap\"><table><thead><tr><th>Location</th><th>Condition</th>");
+        sb.append("<th class=\"num\">True</th><th class=\"num\">False</th><th class=\"num\">Evaluated</th></tr></thead><tbody>\n");
+        i = 0;
+        while (i < conds.count()) {
+            if (conds.derivableAt(i) && conds.coveredAt(i) == false) {
+                sb.append("<tr><td><code>");
+                sb.append(Text.htmlEscape(conds.fileAt(i)));
+                sb.append(":");
+                sb.append(Text.fromInt(conds.lineAt(i)));
+                sb.append("</code> <span class=\"muted\">");
+                sb.append(Text.htmlEscape(conds.methodAt(i)));
+                sb.append("</span></td><td>#");
+                sb.append(Text.fromInt(conds.ordinalAt(i)));
+                sb.append("</td><td class=\"num\">");
+                sb.append(Text.fromInt(conds.trueAt(i)));
+                sb.append("&times;</td><td class=\"num\">");
+                sb.append(Text.fromInt(conds.falseAt(i)));
+                sb.append("&times;</td><td class=\"num\">");
+                sb.append(Text.fromInt(conds.evalAt(i)));
+                sb.append("&times;</td></tr>\n");
+            }
+            i = i + 1;
+        }
+        sb.append("</tbody></table></div>\n");
+    }
+
+    /**
+     * The priority queue: methods ranked by CRAP score, worst first, capped at
+     * ten rows. Complexity and coverage are printed beside the score so the
+     * number is explainable at a glance; >= 30 (the conventional threshold)
+     * is flagged. This section is what turns the report from an inventory
+     * into a work order.
+     */
+    static void crapTable(StringBuilder sb, ArrayList<Site> sites, HitProfile profile) {
+        Crap ranked #= Crap.rank(sites, profile);
+        if (ranked.count() == 0) { return; }
+
+        sb.append("<h2>Riskiest methods (CRAP)</h2>");
+        sb.append("<p class=\"sub\">complexity&sup2; &times; (1 &minus; coverage)&sup3; + complexity &mdash; complex-and-untested first; &ge; 30 needs attention</p>");
+        sb.append("<div class=\"wrap\"><table><thead><tr><th>Method</th>");
+        sb.append("<th class=\"num\">Complexity</th><th class=\"num\">Line cov</th>");
+        sb.append("<th class=\"num\">CRAP</th><th></th></tr></thead><tbody>\n");
+
+        int32 shown = ranked.count();
+        if (shown > 10) { shown = 10; }
+        int32 i = 0;
+        while (i < shown) {
+            sb.append("<tr><td><code>");
+            sb.append(Text.htmlEscape(ranked.methodAt(i)));
+            sb.append("</code></td><td class=\"num\">");
+            sb.append(Text.fromInt(ranked.complexityAt(i)));
+            sb.append("</td><td class=\"num\">");
+            sb.append(Text.fromInt(ranked.covPercentAt(i)));
+            sb.append("%</td><td class=\"num\">");
+            sb.append(ranked.scoreAt(i));
+            sb.append("</td><td>");
+            if (ranked.scoreTenthsAt(i) >= 300) {
+                sb.append("<span style=\"color:var(--bad)\">&#9632;</span> <span class=\"muted\">high risk</span>");
+            }
+            sb.append("</td></tr>\n");
+            i = i + 1;
+        }
+        sb.append("</tbody></table></div>\n");
+    }
+
+    static void head(StringBuilder sb) {
+        sb.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">");
+        sb.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+        sb.append("<title>cajeta-coco coverage</title><style>\n");
+        sb.append(":root{--surface:#fcfcfb;--panel:#ffffff;--ink:#0b0b0b;--ink2:#52514e;");
+        sb.append("--line:#e4e3df;--good:#0ca30c;--warn:#fab219;--bad:#d03b3b;color-scheme:light}\n");
+        sb.append("@media (prefers-color-scheme:dark){:root:not([data-theme=\"light\"])");
+        sb.append("{--surface:#1a1a19;--panel:#232322;--ink:#f2f1ee;--ink2:#a8a6a1;");
+        sb.append("--line:#383835;color-scheme:dark}}\n");
+        sb.append("*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink);");
+        sb.append("font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}\n");
+        sb.append("main{max-width:1100px;margin:0 auto;padding:32px 20px 64px}\n");
+        sb.append("h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:32px 0 12px}\n");
+        sb.append(".sub{color:var(--ink2);margin:0 0 24px}\n");
+        sb.append(".tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}\n");
+        sb.append(".tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}\n");
+        sb.append(".tile .n{font-size:30px;font-weight:650;letter-spacing:-.02em}\n");
+        sb.append(".tile .k{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-spacing:.06em}\n");
+        sb.append(".tile .d{color:var(--ink2);font-size:12px;margin-top:2px}\n");
+        sb.append("table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}\n");
+        sb.append("th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}\n");
+        sb.append("th{color:var(--ink2);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}\n");
+        sb.append("td.num,th.num{text-align:right}\n");
+        sb.append(".bar{position:relative;height:8px;width:140px;background:var(--line);border-radius:4px;overflow:hidden}\n");
+        sb.append(".bar>i{display:block;height:100%;border-radius:4px}\n");
+        sb.append(".wrap{overflow-x:auto}\n");
+        sb.append(".ribbon{display:flex;flex-wrap:wrap;gap:2px;margin:8px 0 4px}\n");
+        sb.append(".c{width:11px;height:14px;border-radius:2px;display:block}\n");
+        sb.append(".c.ok{background:var(--good)}.c.pt{background:var(--warn)}.c.no{background:var(--bad)}\n");
+        sb.append(".legend{display:flex;gap:16px;color:var(--ink2);font-size:12px;margin:6px 0 18px;flex-wrap:wrap}\n");
+        sb.append(".legend span{display:inline-flex;align-items:center;gap:6px}\n");
+        sb.append(".sw{width:11px;height:11px;border-radius:2px;display:inline-block}\n");
+        sb.append(".card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin:14px 0}\n");
+        sb.append(".card h3{margin:0 0 2px;font-size:15px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}\n");
+        sb.append(".gap{margin:10px 0 0;padding:10px 12px;border-left:3px solid var(--bad);background:rgba(208,59,59,.07);border-radius:0 6px 6px 0}\n");
+        sb.append(".gap.part{border-left-color:var(--warn);background:rgba(250,178,25,.09)}\n");
+        sb.append(".gap b{font-weight:600}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}\n");
+        sb.append(".muted{color:var(--ink2)}\n");
+        sb.append("</style></head><body><main>\n");
+    }
+
+    /**
+     * Hero tiles. Three numbers, because line/branch/function answer different
+     * questions and a single blended score hides which one is failing.
+     */
+    static void summary(StringBuilder sb, ArrayList<FileStats> stats, Conditions conds) {
+        int64 lc = Coverage.totalLinesCovered(stats);
+        int64 lt = Coverage.totalLines(stats);
+        int64 bc = Coverage.totalBranchesCovered(stats);
+        int64 bt = Coverage.totalBranches(stats);
+        int64 fc = 0;
+        int64 ft = 0;
+        int32 i = 0;
+        while (i < stats.count()) {
+            fc = fc + stats.get(i).getFuncsCovered();
+            ft = ft + stats.get(i).getFuncsTotal();
+            i = i + 1;
+        }
+
+        sb.append("<h1>Coverage</h1><p class=\"sub\">");
+        sb.append(Text.fromInt((int64) stats.count()));
+        sb.append(" file(s) measured &middot; cajeta-coco</p>\n<div class=\"tiles\">");
+        Html.tile(sb, "Lines", Text.percent(lc, lt), lc, lt);
+        Html.tile(sb, "Branches", Text.percent(bc, bt), bc, bt);
+        Html.tile(sb, "Functions", Text.percent(fc, ft), fc, ft);
+        int64 ct = conds.totalDerivable();
+        if (ct > 0) {
+            int64 cc = conds.totalCovered();
+            Html.tile(sb, "Conditions", Text.percent(cc, ct), cc, ct);
+        }
+        sb.append("</div>\n");
+    }
+
+    static void tile(StringBuilder sb, String kind, String pct, int64 c, int64 t) {
+        sb.append("<div class=\"tile\"><div class=\"k\">");
+        sb.append(kind);
+        sb.append("</div><div class=\"n\">");
+        sb.append(pct);
+        sb.append("%</div><div class=\"d\">");
+        sb.append(Text.fromInt(c));
+        sb.append(" of ");
+        sb.append(Text.fromInt(t));
+        sb.append(" covered</div></div>");
+    }
+
+    /** Per-file table — also the required table view for the colour relief rule. */
+    static void fileTable(StringBuilder sb, ArrayList<FileStats> stats) {
+        sb.append("<h2>Files, least covered first</h2><div class=\"wrap\"><table>");
+        sb.append("<thead><tr><th>File</th><th class=\"num\">Lines</th><th></th>");
+        sb.append("<th class=\"num\">Branches</th><th class=\"num\">Functions</th></tr></thead><tbody>\n");
+
+        IntList order #= Html.worstFirst(stats);
+        int32 i = 0;
+        while (i < order.count()) {
+            FileStats s = stats.get((int32) order.get(i));
+            sb.append("<tr><td><code>");
+            sb.append(Text.htmlEscape(s.getFile()));
+            sb.append("</code></td><td class=\"num\">");
+            sb.append(s.linePercent());
+            sb.append("%</td><td><div class=\"bar\"><i style=\"width:");
+            sb.append(Text.fromInt(s.lineScore()));
+            sb.append("%;background:");
+            sb.append(Html.scoreColor(s.lineScore()));
+            sb.append("\"></i></div></td><td class=\"num\">");
+            sb.append(s.branchPercent());
+            sb.append("%</td><td class=\"num\">");
+            sb.append(s.functionPercent());
+            sb.append("%</td></tr>\n");
+            i = i + 1;
+        }
+        sb.append("</tbody></table></div>\n");
+    }
+
+    /** Per-file detail: ribbon, then the concrete gaps to go and close. */
+    static void perFile(StringBuilder sb, ArrayList<Site> sites, HitProfile profile,
+                        ArrayList<FileStats> stats,
+                        CallGraph graph, ArrayList<String> reachable) {
+        sb.append("<h2>Where the gaps are</h2>");
+        sb.append("<div class=\"legend\"><span><i class=\"sw\" style=\"background:var(--good)\"></i>covered</span>");
+        sb.append("<span><i class=\"sw\" style=\"background:var(--warn)\"></i>partial branch</span>");
+        sb.append("<span><i class=\"sw\" style=\"background:var(--bad)\"></i>never executed</span>");
+        sb.append("<span class=\"muted\">one cell = one measurable line, in source order</span></div>\n");
+
+        IntList order #= Html.worstFirst(stats);
+        int32 i = 0;
+        while (i < order.count()) {
+            FileStats s = stats.get((int32) order.get(i));
+            sb.append("<div class=\"card\"><h3>");
+            sb.append(Text.htmlEscape(s.getFile()));
+            sb.append(" <a class=\"muted\" href=\"annotated.html#f-");
+            sb.append(Text.slug(s.getFile()));
+            sb.append("\" style=\"font-size:12px;font-weight:400\">source &#8599;</a>");
+            sb.append("</h3><div class=\"muted\">");
+            sb.append(s.linePercent());
+            sb.append("% lines &middot; ");
+            sb.append(s.branchPercent());
+            sb.append("% branches</div>");
+
+            Html.ribbon(sb, sites, profile, s);
+            Html.gaps(sb, sites, profile, s, graph, reachable);
+            sb.append("</div>\n");
+            i = i + 1;
+        }
+    }
+
+    /** One cell per measurable line, in ascending source order. */
+    static void ribbon(StringBuilder sb, ArrayList<Site> sites, HitProfile profile,
+                       FileStats s) {
+        IntList lines #= Html.measurableLines(sites, s.getFile());
+        sb.append("<div class=\"ribbon\">");
+        int32 i = 0;
+        while (i < lines.count()) {
+            int64 ln = lines.get(i);
+            String cls #= Html.lineClass(sites, profile, s, ln);
+            sb.append("<i class=\"c ");
+            sb.append(cls);
+            sb.append("\" title=\"line ");
+            sb.append(Text.fromInt(ln));
+            sb.append("\"></i>");
+            i = i + 1;
+        }
+        sb.append("</div>");
+    }
+
+    static #String lineClass(ArrayList<Site> sites, HitProfile profile,
+                             FileStats s, int64 line) {
+        if (s.getUncoveredLines().contains(line)) { return "no"; }
+        if (s.getPartialBranchLines().contains(line)) { return "pt"; }
+        return "ok";
+    }
+
+    /**
+     * The actionable half of the report: for each gap, the enclosing method and
+     * its signature, so the reader knows what to call and with what — rather
+     * than a bare line number they then have to go look up.
+     *
+     * With a call graph in hand, never-entered methods split into the two
+     * populations that demand opposite responses: statically dead (delete) and
+     * reachable-but-untested (test, with the signature to call and the callers
+     * to imitate). Without one, everything is presented as untested — "dead"
+     * is never claimed on coverage evidence alone.
+     */
+    static void gaps(StringBuilder sb, ArrayList<Site> sites, HitProfile profile,
+                     FileStats s, CallGraph graph, ArrayList<String> reachable) {
+        // Uncovered FUNCTION sites of this file, classified.
+        int32 deadN = 0;
+        int32 untestedN = 0;
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site site = sites.get(i);
+            if (site.getFile().equals(s.getFile())
+                && site.getKind() == SiteKind.FUNCTION
+                && profile.covered(site.getId()) == false) {
+                boolean dead = false;
+                if (graph != null) {
+                    String key #= CallGraph.keyOf(site.getOwner(), site.getMethod());
+                    if (CallGraph.isIn(reachable, key) == false
+                        && Coverage.classAlive(sites, profile, site.getOwner()) == false) {
+                        dead = true;
+                    }
+                }
+                if (dead) { deadN = deadN + 1; } else { untestedN = untestedN + 1; }
+            }
+            i = i + 1;
+        }
+
+        if (deadN > 0) {
+            sb.append("<div class=\"gap\"><b>Dead code (");
+            sb.append(Text.fromInt((int64) deadN));
+            sb.append(")</b> <span class=\"muted\">— unreachable from the entry AND from every method that executed (reflection-aware). Delete rather than test.</span><br>");
+            Html.gapMethods(sb, sites, profile, s, graph, reachable, true);
+            sb.append("</div>");
+        }
+
+        if (untestedN > 0) {
+            sb.append("<div class=\"gap\"><b>Reachable but never tested (");
+            sb.append(Text.fromInt((int64) untestedN));
+            sb.append(")</b><br>");
+            Html.gapMethods(sb, sites, profile, s, graph, reachable, false);
+            sb.append("</div>");
+        }
+
+        IntList un = s.getUncoveredLines();
+        if (un.count() > 0) {
+            sb.append("<div class=\"gap\"><b>Unexecuted lines (");
+            sb.append(Text.fromInt((int64) un.count()));
+            sb.append(")</b><br>");
+            int32 i = 0;
+            while (i < un.count()) {
+                int64 ln = un.get(i);
+                sb.append("line <b>");
+                sb.append(Text.fromInt(ln));
+                sb.append("</b> in <code>");
+                sb.append(Text.htmlEscape(Html.methodAt(sites, s.getFile(), ln)));
+                sb.append("</code><br>");
+                i = i + 1;
+            }
+            sb.append("</div>");
+        }
+
+        IntList part = s.getPartialBranchLines();
+        if (part.count() > 0) {
+            sb.append("<div class=\"gap part\"><b>Partially covered decisions (");
+            sb.append(Text.fromInt((int64) part.count()));
+            sb.append(")</b><br>");
+            int32 i = 0;
+            while (i < part.count()) {
+                int64 ln = part.get(i);
+                sb.append("line <b>");
+                sb.append(Text.fromInt(ln));
+                sb.append("</b> in <code>");
+                sb.append(Text.htmlEscape(Html.methodAt(sites, s.getFile(), ln)));
+                sb.append("</code> &mdash; ran, but one arm was never taken<br>");
+                i = i + 1;
+            }
+            sb.append("<span class=\"muted\">These look green at line grain. They are the highest-value tests to add.</span></div>");
+        }
+    }
+
+    /**
+     * Render each uncovered method matching `wantDead`, with everything a
+     * test author needs in one line: the declared signature (parameter names
+     * included), the declaration site, and — for reachable methods — up to
+     * three call sites to imitate.
+     */
+    static void gapMethods(StringBuilder sb, ArrayList<Site> sites, HitProfile profile,
+                           FileStats s, CallGraph graph, ArrayList<String> reachable,
+                           boolean wantDead) {
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site site = sites.get(i);
+            if (site.getFile().equals(s.getFile())
+                && site.getKind() == SiteKind.FUNCTION
+                && profile.covered(site.getId()) == false) {
+                boolean dead = false;
+                String key #= CallGraph.keyOf(site.getOwner(), site.getMethod());
+                if (graph != null) {
+                    if (CallGraph.isIn(reachable, key) == false
+                        && Coverage.classAlive(sites, profile, site.getOwner()) == false) {
+                        dead = true;
+                    }
+                }
+                if (dead == wantDead) {
+                    sb.append("<code>");
+                    String sig #= "";
+                    if (graph != null) { sig #= graph.signatureOf(key); }
+                    if (sig.byteLength() > 0) {
+                        sb.append(Text.htmlEscape(site.getOwner()));
+                        sb.append(".");
+                        sb.append(Text.htmlEscape(sig));
+                    } else {
+                        sb.append(Text.htmlEscape(site.qualified()));
+                    }
+                    sb.append("</code>");
+                    if (graph != null) {
+                        String at #= graph.declSiteOf(key);
+                        if (at.byteLength() > 0) {
+                            sb.append(" <span class=\"muted\">declared at ");
+                            sb.append(Text.htmlEscape(at));
+                            sb.append("</span>");
+                        }
+                        if (dead) {
+                            // "Zero callers anywhere" and "called only from
+                            // dead code" are different findings; say which.
+                            if (graph.callerCount(key) > 0) {
+                                sb.append(" <span class=\"muted\">— called only from code that is itself unreachable</span>");
+                            }
+                        } else {
+                            String callers #= graph.callersOf(key);
+                            if (callers.byteLength() > 0) {
+                                sb.append(" <span class=\"muted\">— called from ");
+                                sb.append(Text.htmlEscape(callers));
+                                sb.append("</span>");
+                            } else {
+                                sb.append(" <span class=\"muted\">— reachable via virtual dispatch</span>");
+                            }
+                        }
+                    }
+                    sb.append("<br>");
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    /** Qualified method enclosing `line`, for gap annotations. */
+    static #String methodAt(ArrayList<Site> sites, String file, int64 line) {
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site s = sites.get(i);
+            if (s.getFile().equals(file) && s.getLine() == line) {
+                return s.qualified();
+            }
+            i = i + 1;
+        }
+        return "(unknown)";
+    }
+
+    /** Ascending distinct lines carrying any probe in `file`. */
+    static #IntList measurableLines(ArrayList<Site> sites, String file) {
+        IntList seen #= heap IntList(sites.count());
+        IntList out #= heap IntList(sites.count());
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site s = sites.get(i);
+            if (s.getFile().equals(file) && s.getKind() == SiteKind.LINE) {
+                if (seen.contains(s.getLine()) == false) {
+                    seen.add(s.getLine());
+                    out.insertSorted(s.getLine());
+                }
+            }
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /** Indices into `stats`, ascending by line coverage — worst first. */
+    static #IntList worstFirst(ArrayList<FileStats> stats) {
+        IntList out #= heap IntList(stats.count());
+        int32 i = 0;
+        while (i < stats.count()) {
+            int64 score = stats.get(i).lineScore();
+            int32 at = 0;
+            while (at < out.count()
+                   && stats.get((int32) out.get(at)).lineScore() <= score) {
+                at = at + 1;
+            }
+            out.add(i);
+            int32 j = out.count() - 1;
+            while (j > at) {
+                out.set(j, out.get(j - 1));
+                j = j - 1;
+            }
+            out.set(at, i);
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /** Bar fill: status colour banded by score, always beside a printed number. */
+    static #String scoreColor(int64 score) {
+        if (score >= 80) { return "var(--good)"; }
+        if (score >= 50) { return "var(--warn)"; }
+        return "var(--bad)";
+    }
+}

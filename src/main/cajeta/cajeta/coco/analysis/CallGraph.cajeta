@@ -1,0 +1,164 @@
+package cajeta.coco.analysis;
+
+import cajeta.collection.ArrayList;
+import cajeta.collection.graph.Digraph;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+import dev.cajeta.xref.Keys;
+import dev.cajeta.xref.XrefDoc;
+
+/**
+ * Static reachability over the compiler's cross-reference index — coco's
+ * POLICY layer, and nothing else.
+ *
+ * The mechanics live elsewhere now: `dev.cajeta.xref` owns the document
+ * format (streaming parse, `owner::name/argc` key normalization), and the
+ * stdlib's `cajeta.collection.graph.Digraph` owns traversal. What stays here
+ * is exactly what makes coco coco:
+ *
+ * - **Which records become edges**: calls, plus overrides as base->impl —
+ *   the conservative virtual-dispatch approximation (a reachable base
+ *   reaches every override).
+ * - **Which nodes are roots**: the entry (any arity) PLUS every method the
+ *   profile shows executed — coverage-seeded roots, because reflection and
+ *   DI are invisible to a static graph and executed code is ground truth.
+ * - **The error direction**: keys collapse overloads by arity and partial
+ *   documents degrade toward "untested", so the analysis can miss dead code
+ *   but can never call a live method dead.
+ */
+public class CallGraph {
+    XrefDoc doc;
+
+    CallGraph(#XrefDoc doc) {
+        this.doc #= doc;
+    }
+
+    /** Parse an `--emit-xref` document; empty/missing files yield no edges. */
+    public static #CallGraph parseFile(String path) {
+        XrefDoc d #= XrefDoc.parseFile(path);
+        return heap CallGraph(#d);
+    }
+
+    /** Normalized key for a probe site's owner + mangled method. */
+    public static #String keyOf(String owner, String method) {
+        return Keys.keyOf(owner, method);
+    }
+
+    /** Number of call edges parsed — the "did we actually get a graph" probe. */
+    public int32 edgeCount() {
+        return this.doc.callCount();
+    }
+
+    /** Human signature for `key` (from its declaration), or empty. */
+    public #String signatureOf(String key) {
+        return this.doc.signatureOf(key);
+    }
+
+    /** `file:line` of `key`'s declaration, or empty. */
+    public #String declSiteOf(String key) {
+        return this.doc.declSiteOf(key);
+    }
+
+    /** Up to three `caller at file:line` fragments for `key`. */
+    public #String callersOf(String key) {
+        return this.doc.callersOf(key);
+    }
+
+    /** Number of call edges naming `key` as callee. */
+    public int32 callerCount(String key) {
+        return this.doc.callerCount(key);
+    }
+
+    /**
+     * Every key reachable from `owner.name` (any arity) or from any of
+     * `extraRoots`, to a fixpoint — the stdlib Digraph does the walking;
+     * this method decides what the graph and the roots ARE.
+     */
+    public #ArrayList<String> reachableFrom(String owner, String name,
+                                            ArrayList<String> extraRoots) {
+        Digraph<String> g = heap Digraph<String>();
+
+        int32 e = 0;
+        while (e < this.doc.callCount()) {
+            String f = this.doc.callerAt(e);
+            String t = this.doc.calleeAt(e);
+            int32 fi = g.intern(f.substring(0, f.byteLength()));
+            int32 ti = g.intern(t.substring(0, t.byteLength()));
+            g.addEdge(fi, ti);
+            e = e + 1;
+        }
+        int32 o = 0;
+        while (o < this.doc.overrideCount()) {
+            String b = this.doc.overrideBaseAt(o);
+            String m = this.doc.overrideImplAt(o);
+            int32 bi = g.intern(b.substring(0, b.byteLength()));
+            int32 mi = g.intern(m.substring(0, m.byteLength()));
+            g.addEdge(bi, mi);
+            o = o + 1;
+        }
+        int32 d = 0;
+        while (d < this.doc.declCount()) {
+            String k = this.doc.declKeyAt(d);
+            g.intern(k.substring(0, k.byteLength()));
+            d = d + 1;
+        }
+
+        // Roots: every known key of owner::name (any arity) + the
+        // coverage-seeded extras.
+        StringBuilder pb = stack StringBuilder();
+        pb.append(owner);
+        pb.append("::");
+        pb.append(name);
+        pb.append("/");
+        String prefix #= pb.toString();
+
+        int32 n = g.nodeCount();
+        int32[] roots #= heap int32[n];
+        int32 rn = 0;
+        int32 i = 0;
+        while (i < n) {
+            if (g.nodeAt(i).startsWith(prefix)) {
+                roots[rn] = i;
+                rn = rn + 1;
+            }
+            i = i + 1;
+        }
+        int32 x = 0;
+        while (x < extraRoots.count() && rn < n) {
+            int32 id = g.idOf(extraRoots.get(x));
+            if (id >= 0) {
+                roots[rn] = id;
+                rn = rn + 1;
+            }
+            x = x + 1;
+        }
+        int32[] trimmed #= heap int32[rn];
+        i = 0;
+        while (i < rn) {
+            trimmed[i] = roots[i];
+            i = i + 1;
+        }
+
+        int8[] mask #= g.reachableFrom(trimmed);
+        ArrayList<String> out #= heap ArrayList<String>();
+        i = 0;
+        while (i < n) {
+            if (mask[i] == 1) {
+                String key = g.nodeAt(i);
+                out.add(key.substring(0, key.byteLength()));
+            }
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /** Is `key` in a reachable set? */
+    public static boolean isIn(ArrayList<String> set, String key) {
+        int32 i = 0;
+        while (i < set.count()) {
+            if (set.get(i).equals(key)) { return true; }
+            i = i + 1;
+        }
+        return false;
+    }
+}

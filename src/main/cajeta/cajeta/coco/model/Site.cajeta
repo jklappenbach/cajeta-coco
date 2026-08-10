@@ -1,0 +1,113 @@
+package cajeta.coco.model;
+
+import cajeta.coco.util.Text;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+
+/**
+ * One probe site — the static half of a coverage measurement.
+ *
+ * A site is everything the report needs to talk about a probe WITHOUT the
+ * profile: where it is, what it measures, and which method encloses it. The
+ * dynamic half is a single counter, looked up by `id`.
+ *
+ * Sites are what make an uncovered line actionable. "Line 41 is uncovered" is
+ * a chore; "line 41 is the false arm of `n < 0` in
+ * `Calc.classify(n: int32)`, reachable from 3 callers" is a test you can sit
+ * down and write. That second sentence is assembled entirely from this record
+ * plus the call graph.
+ */
+public class Site {
+    /** Dense probe id — index into the runtime counter table. */
+    int64 id;
+    /** Source file, repo-relative (from the module's `source_filename`). */
+    String file;
+    /** 1-based source line. */
+    int64 line;
+    /** Fully-qualified enclosing class, e.g. `com.example.basic.Calc`. */
+    String owner;
+    /** Enclosing method's mangled signature, e.g. `classify(n:int32)`. */
+    String method;
+    /** What this probe measures. */
+    SiteKind kind;
+    /**
+     * Decision group id for branch sites: branches sharing a group are leaf
+     * conditions of one `&&` / `||` decision. -1 for non-branch sites and for
+     * single-condition branches.
+     */
+    int64 decision;
+    /**
+     * For branch sites, the basic block the branch lives in, and the block the
+     * arm jumps to. Cajeta names short-circuit blocks structurally
+     * (`land_rhs`, `land_merge`, `lor_rhs`, `lor_merge`), so these two names
+     * are what let the analysis layer recognise a `&&` / `||` decision and
+     * recover the right-hand operand's own true/false counts from edge counts
+     * alone — no extra probes required. Empty for non-branch sites.
+     */
+    String block;
+    String target;
+
+    public Site(int64 id, #String file, int64 line, #String owner,
+                #String method, SiteKind kind, int64 decision,
+                #String block, #String target) {
+        this.id = id;
+        this.file #= file;
+        this.line = line;
+        this.owner #= owner;
+        this.method #= method;
+        this.kind = kind;
+        this.decision = decision;
+        this.block #= block;
+        this.target #= target;
+    }
+
+    public int64 getId()        { return this.id; }
+    public String getFile()     { return this.file; }
+    public int64 getLine()      { return this.line; }
+    public String getOwner()    { return this.owner; }
+    public String getMethod()   { return this.method; }
+    public SiteKind getKind()   { return this.kind; }
+    public int64 getDecision()  { return this.decision; }
+    public String getBlock()    { return this.block; }
+    public String getTarget()   { return this.target; }
+
+    /** Reassign the decision group once the analysis layer has grouped arms. */
+    public void setDecision(int64 d) { this.decision = d; }
+
+    /**
+     * Human-readable qualified method name, `Class.method(sig)` — what the
+     * report prints beside an uncovered line.
+     */
+    public #String qualified() {
+        StringBuilder sb = stack StringBuilder();
+        sb.append(this.owner);
+        sb.append(".");
+        sb.append(this.method);
+        return sb.toString();
+    }
+
+    /** Serialize as one JSON object (the probe-map wire format). */
+    public #String toJson() {
+        StringBuilder sb = stack StringBuilder();
+        sb.append("{\"id\":");
+        sb.append(Text.fromInt(this.id));
+        sb.append(",\"file\":\"");
+        sb.append(Text.jsonEscape(this.file));
+        sb.append("\",\"line\":");
+        sb.append(Text.fromInt(this.line));
+        sb.append(",\"owner\":\"");
+        sb.append(Text.jsonEscape(this.owner));
+        sb.append("\",\"method\":\"");
+        sb.append(Text.jsonEscape(this.method));
+        sb.append("\",\"kind\":\"");
+        sb.append(this.kind.toName());
+        sb.append("\",\"decision\":");
+        sb.append(Text.fromInt(this.decision));
+        sb.append(",\"block\":\"");
+        sb.append(Text.jsonEscape(this.block));
+        sb.append("\",\"target\":\"");
+        sb.append(Text.jsonEscape(this.target));
+        sb.append("\"}");
+        return sb.toString();
+    }
+}

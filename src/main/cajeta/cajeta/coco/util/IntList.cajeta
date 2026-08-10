@@ -1,0 +1,77 @@
+package cajeta.coco.util;
+
+/**
+ * A fixed-capacity `int64` sequence.
+ *
+ * `ArrayList<int64>` monomorphizes to `ArrayList<cajeta.lang.Int64>` — the boxed
+ * wrapper — so every append would allocate a box and every read would unbox.
+ * Coverage aggregation walks line numbers in tight inner loops, which is exactly
+ * the wrong place to pay that.
+ *
+ * Capacity is fixed at construction rather than grown, because every caller
+ * already knows its bound: the number of line numbers in a file cannot exceed
+ * the number of probe sites, and that count is in hand before aggregation
+ * starts. Sizing exactly removes the reallocation path entirely.
+ */
+public class IntList {
+    int64[] items;
+    int32 len;
+    int32 cap;
+
+    /** Create a list that can hold `capacity` values. */
+    public IntList(int32 capacity) {
+        int32 c = capacity;
+        if (c < 1) { c = 1; }
+        this.cap = c;
+        this.len = 0;
+        this.items #= heap int64[c];
+    }
+
+    public int32 count() { return this.len; }
+    public int32 capacity() { return this.cap; }
+
+    public int64 get(int32 i) {
+        if (i < 0) { return 0; }
+        if (i >= this.len) { return 0; }
+        return this.items[i];
+    }
+
+    public void set(int32 i, int64 v) {
+        if (i < 0) { return; }
+        if (i >= this.len) { return; }
+        this.items[i] = v;
+    }
+
+    /** Append `v`. Ignored when the list is at capacity. */
+    public void add(int64 v) {
+        if (this.len >= this.cap) { return; }
+        this.items[this.len] = v;
+        this.len = this.len + 1;
+    }
+
+    /** First index holding `v`, or -1. */
+    public int32 indexOf(int64 v) {
+        int32 i = 0;
+        while (i < this.len) {
+            if (this.items[i] == v) { return i; }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    public boolean contains(int64 v) { return this.indexOf(v) >= 0; }
+
+    /** Insert `v` keeping ascending order. Reports want sorted line numbers. */
+    public void insertSorted(int64 v) {
+        if (this.len >= this.cap) { return; }
+        int32 at = 0;
+        while (at < this.len && this.items[at] < v) { at = at + 1; }
+        int32 j = this.len;
+        while (j > at) {
+            this.items[j] = this.items[j - 1];
+            j = j - 1;
+        }
+        this.items[at] = v;
+        this.len = this.len + 1;
+    }
+}

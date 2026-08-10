@@ -1,0 +1,170 @@
+package cajeta.coco.report;
+
+import cajeta.coco.analysis.Coverage;
+import cajeta.coco.analysis.FileStats;
+import cajeta.coco.model.HitProfile;
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteKind;
+import cajeta.coco.util.Io;
+import cajeta.coco.util.IntList;
+import cajeta.coco.util.Text;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+
+/**
+ * Annotated source view — the actual code, line-classed by coverage.
+ *
+ * The ribbon in the main report shows the *shape* of a file's gaps; this page
+ * shows the gaps in the code itself, which is where the "so what do I test?"
+ * question actually gets answered. Reading follows llvm-cov's ergonomics:
+ * **negative information carries the color** — uncovered lines are tinted red
+ * and partial decisions amber, while covered code stays plain with its hit
+ * count in the gutter. A wall of green would celebrate the part that needs no
+ * attention.
+ *
+ * Anchors are per-file slugs (`#f-<slugged-path>`), stable across renders, so
+ * the main report's file cards can deep-link here.
+ */
+public class Annotate {
+
+    /** Render the whole annotated-source document. `srcRoot` locates files. */
+    public static #String render(ArrayList<Site> sites, HitProfile profile,
+                                 String srcRoot) {
+        ArrayList<FileStats> stats #= Coverage.summarize(sites, profile);
+        StringBuilder sb #= heap StringBuilder();
+        Annotate.head(sb);
+
+        // Index of files, worst first (same ordering instinct as the report).
+        sb.append("<h1>Annotated source</h1><p class=\"sub\">uncovered lines tinted; hit counts in the gutter</p><ul class=\"idx\">");
+        int32 f = 0;
+        while (f < stats.count()) {
+            FileStats st = stats.get(f);
+            sb.append("<li><a href=\"#f-");
+            sb.append(Text.slug(st.getFile()));
+            sb.append("\"><code>");
+            sb.append(Text.htmlEscape(st.getFile()));
+            sb.append("</code></a> <span class=\"muted\">");
+            sb.append(st.linePercent());
+            sb.append("% lines</span></li>");
+            f = f + 1;
+        }
+        sb.append("</ul>\n");
+
+        f = 0;
+        while (f < stats.count()) {
+            Annotate.file(sb, sites, profile, stats.get(f), srcRoot);
+            f = f + 1;
+        }
+        sb.append("</main></body></html>\n");
+        return sb.toString();
+    }
+
+    static void file(StringBuilder sb, ArrayList<Site> sites, HitProfile profile,
+                     FileStats st, String srcRoot) {
+        StringBuilder pathSb = stack StringBuilder();
+        pathSb.append(srcRoot);
+        pathSb.append("/");
+        pathSb.append(st.getFile());
+        String path #= pathSb.toString();
+        String source #= Io.readAll(path);
+
+        sb.append("<div class=\"card\" id=\"f-");
+        sb.append(Text.slug(st.getFile()));
+        sb.append("\"><h3>");
+        sb.append(Text.htmlEscape(st.getFile()));
+        sb.append("</h3><div class=\"muted\">");
+        sb.append(st.linePercent());
+        sb.append("% lines &middot; ");
+        sb.append(st.branchPercent());
+        sb.append("% branches</div>");
+
+        if (source.byteLength() == 0) {
+            sb.append("<p class=\"muted\">source not found under the given root</p></div>\n");
+            return;
+        }
+
+        // Per-line max hit count, the same rule the lcov emitter uses.
+        IntList lineNums #= heap IntList(sites.count());
+        IntList lineMax #= heap IntList(sites.count());
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site s = sites.get(i);
+            if (s.getFile().equals(st.getFile()) && s.getKind() == SiteKind.LINE) {
+                int64 c = profile.countOf(s.getId());
+                int32 at = lineNums.indexOf(s.getLine());
+                if (at < 0) {
+                    lineNums.add(s.getLine());
+                    lineMax.add(c);
+                } else if (c > lineMax.get(at)) {
+                    lineMax.set(at, c);
+                }
+            }
+            i = i + 1;
+        }
+
+        ArrayList<String> lines #= Text.splitLines(source);
+        sb.append("<div class=\"srcwrap\"><pre class=\"src\">");
+        int32 ln = 0;
+        while (ln < lines.count()) {
+            int64 lineNo = (int64) ln + 1;
+            String cls #= Annotate.classOf(st, lineNums, lineNo);
+            sb.append("<span class=\"row ");
+            sb.append(cls);
+            sb.append("\"><span class=\"ln\">");
+            sb.append(Text.fromInt(lineNo));
+            sb.append("</span><span class=\"cnt\">");
+            int32 at = lineNums.indexOf(lineNo);
+            if (at >= 0 && lineMax.get(at) > 0) {
+                sb.append(Text.fromInt(lineMax.get(at)));
+                sb.append("&times;");
+            }
+            sb.append("</span>");
+            sb.append(Text.htmlEscape(lines.get(ln)));
+            sb.append("\n</span>");
+            ln = ln + 1;
+        }
+        sb.append("</pre></div></div>\n");
+    }
+
+    /** Row class: no = never ran, pt = partial decision, ok = ran, "" = unmeasured. */
+    static #String classOf(FileStats st, IntList measurable, int64 line) {
+        if (st.getUncoveredLines().contains(line)) { return "no"; }
+        if (st.getPartialBranchLines().contains(line)) { return "pt"; }
+        if (measurable.contains(line)) { return "ok"; }
+        return "";
+    }
+
+    static void head(StringBuilder sb) {
+        sb.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">");
+        sb.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+        sb.append("<title>cajeta-coco annotated source</title><style>\n");
+        sb.append(":root{--surface:#fcfcfb;--panel:#ffffff;--ink:#0b0b0b;--ink2:#52514e;");
+        sb.append("--line:#e4e3df;--good:#0ca30c;--warn:#fab219;--bad:#d03b3b;color-scheme:light}\n");
+        sb.append("@media (prefers-color-scheme:dark){:root:not([data-theme=\"light\"])");
+        sb.append("{--surface:#1a1a19;--panel:#232322;--ink:#f2f1ee;--ink2:#a8a6a1;");
+        sb.append("--line:#383835;color-scheme:dark}}\n");
+        sb.append("*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink);");
+        sb.append("font:14px/1.5 ui-sans-serif,system-ui,sans-serif}\n");
+        sb.append("main{max-width:1100px;margin:0 auto;padding:32px 20px 64px}\n");
+        sb.append("h1{font-size:22px;margin:0 0 4px}h3{margin:0 0 2px;font-size:15px;");
+        sb.append("font-family:ui-monospace,SFMono-Regular,Menlo,monospace}\n");
+        sb.append(".sub,.muted{color:var(--ink2)}.sub{margin:0 0 20px}\n");
+        sb.append(".idx{margin:0 0 8px;padding-left:20px}.idx li{margin:2px 0}\n");
+        sb.append(".card{background:var(--panel);border:1px solid var(--line);border-radius:10px;");
+        sb.append("padding:16px;margin:14px 0}\n");
+        sb.append(".srcwrap{overflow-x:auto;margin-top:10px}\n");
+        sb.append("pre.src{margin:0;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}\n");
+        sb.append(".row{display:block;padding:0 6px;border-radius:3px}\n");
+        sb.append(".row.no{background:rgba(208,59,59,.14)}\n");
+        sb.append(".row.pt{background:rgba(250,178,25,.16)}\n");
+        sb.append(".ln{display:inline-block;width:44px;text-align:right;color:var(--ink2);");
+        sb.append("user-select:none;padding-right:10px}\n");
+        sb.append(".cnt{display:inline-block;width:44px;text-align:right;color:var(--good);");
+        sb.append("user-select:none;padding-right:12px;font-size:11px}\n");
+        sb.append(".row.no .cnt,.row.pt .cnt{color:var(--ink2)}\n");
+        sb.append("code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}\n");
+        sb.append("a{color:inherit}\n");
+        sb.append("</style></head><body><main>\n");
+    }
+}

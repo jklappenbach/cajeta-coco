@@ -1,0 +1,99 @@
+package cajeta.coco.analysis;
+
+import cajeta.coco.util.Text;
+import cajeta.coco.util.IntList;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+
+/**
+ * Coverage totals for one source file, plus the uncovered detail a developer
+ * actually needs.
+ *
+ * The uncovered lists are carried alongside the counts rather than recomputed
+ * later because a percentage on its own is not actionable — the number tells
+ * you there is work, the list tells you where. Every report format renders
+ * from this one structure.
+ */
+public class FileStats {
+    String file;
+
+    int64 linesCovered;
+    int64 linesTotal;
+    int64 branchesCovered;
+    int64 branchesTotal;
+    int64 funcsCovered;
+    int64 funcsTotal;
+
+    /** Distinct source lines with no hit, ascending. */
+    IntList uncoveredLines;
+    /** Lines where one arm of a branch never ran (partially covered). */
+    IntList partialBranchLines;
+    /** Qualified names of methods never entered. */
+    ArrayList<String> uncoveredMethods;
+
+    public FileStats(#String file, int32 capacity) {
+        this.file #= file;
+        this.linesCovered = 0;
+        this.linesTotal = 0;
+        this.branchesCovered = 0;
+        this.branchesTotal = 0;
+        this.funcsCovered = 0;
+        this.funcsTotal = 0;
+        this.uncoveredLines #= heap IntList(capacity);
+        this.partialBranchLines #= heap IntList(capacity);
+        this.uncoveredMethods #= heap ArrayList<String>();
+    }
+
+    public String getFile() { return this.file; }
+
+    public int64 getLinesCovered()    { return this.linesCovered; }
+    public int64 getLinesTotal()      { return this.linesTotal; }
+    public int64 getBranchesCovered() { return this.branchesCovered; }
+    public int64 getBranchesTotal()   { return this.branchesTotal; }
+    public int64 getFuncsCovered()    { return this.funcsCovered; }
+    public int64 getFuncsTotal()      { return this.funcsTotal; }
+
+    public IntList getUncoveredLines()      { return this.uncoveredLines; }
+    public IntList getPartialBranchLines()  { return this.partialBranchLines; }
+    public ArrayList<String> getUncoveredMethods()   { return this.uncoveredMethods; }
+
+    public void addLine(boolean covered) {
+        this.linesTotal = this.linesTotal + 1;
+        if (covered) { this.linesCovered = this.linesCovered + 1; }
+    }
+
+    public void addBranch(boolean covered) {
+        this.branchesTotal = this.branchesTotal + 1;
+        if (covered) { this.branchesCovered = this.branchesCovered + 1; }
+    }
+
+    public void addFunction(boolean covered) {
+        this.funcsTotal = this.funcsTotal + 1;
+        if (covered) { this.funcsCovered = this.funcsCovered + 1; }
+    }
+
+    /**
+     * Line coverage percentage, to one decimal.
+     *
+     * A file with no measurable lines reports 100 rather than 0 — an empty
+     * denominator is "nothing to cover", not "nothing covered", and scoring it
+     * as a failure would punish interface-only or constant-only files.
+     */
+    public #String linePercent() {
+        return Text.percent(this.linesCovered, this.linesTotal);
+    }
+
+    public #String branchPercent() {
+        return Text.percent(this.branchesCovered, this.branchesTotal);
+    }
+
+    public #String functionPercent() {
+        return Text.percent(this.funcsCovered, this.funcsTotal);
+    }
+
+    /** Integer line percentage, for sorting and threshold gates. */
+    public int64 lineScore() {
+        if (this.linesTotal <= 0) { return 100; }
+        return (this.linesCovered * 100) / this.linesTotal;
+    }
+}

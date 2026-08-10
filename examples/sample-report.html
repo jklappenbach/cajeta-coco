@@ -1,0 +1,48 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>cajeta-coco coverage</title><style>
+:root{--surface:#fcfcfb;--panel:#ffffff;--ink:#0b0b0b;--ink2:#52514e;--line:#e4e3df;--good:#0ca30c;--warn:#fab219;--bad:#d03b3b;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--surface:#1a1a19;--panel:#232322;--ink:#f2f1ee;--ink2:#a8a6a1;--line:#383835;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:32px 20px 64px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:32px 0 12px}
+.sub{color:var(--ink2);margin:0 0 24px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.tile .n{font-size:30px;font-weight:650;letter-spacing:-.02em}
+.tile .k{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.tile .d{color:var(--ink2);font-size:12px;margin-top:2px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{color:var(--ink2);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+td.num,th.num{text-align:right}
+.bar{position:relative;height:8px;width:140px;background:var(--line);border-radius:4px;overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:4px}
+.wrap{overflow-x:auto}
+.ribbon{display:flex;flex-wrap:wrap;gap:2px;margin:8px 0 4px}
+.c{width:11px;height:14px;border-radius:2px;display:block}
+.c.ok{background:var(--good)}.c.pt{background:var(--warn)}.c.no{background:var(--bad)}
+.legend{display:flex;gap:16px;color:var(--ink2);font-size:12px;margin:6px 0 18px;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:11px;height:11px;border-radius:2px;display:inline-block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin:14px 0}
+.card h3{margin:0 0 2px;font-size:15px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.gap{margin:10px 0 0;padding:10px 12px;border-left:3px solid var(--bad);background:rgba(208,59,59,.07);border-radius:0 6px 6px 0}
+.gap.part{border-left-color:var(--warn);background:rgba(250,178,25,.09)}
+.gap b{font-weight:600}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+.muted{color:var(--ink2)}
+</style></head><body><main>
+<h1>Coverage</h1><p class="sub">1 file(s) measured &middot; cajeta-coco</p>
+<div class="tiles"><div class="tile"><div class="k">Lines</div><div class="n">65.0%</div><div class="d">13 of 20 covered</div></div><div class="tile"><div class="k">Branches</div><div class="n">50.0%</div><div class="d">7 of 14 covered</div></div><div class="tile"><div class="k">Functions</div><div class="n">66.6%</div><div class="d">4 of 6 covered</div></div></div>
+<h2>Files, least covered first</h2><div class="wrap"><table><thead><tr><th>File</th><th class="num">Lines</th><th></th><th class="num">Branches</th><th class="num">Functions</th></tr></thead><tbody>
+<tr><td><code>probe/Cond.cajeta</code></td><td class="num">65.0%</td><td><div class="bar"><i style="width:65%;background:var(--warn)"></i></div></td><td class="num">50.0%</td><td class="num">66.6%</td></tr>
+</tbody></table></div>
+<h2>Riskiest methods (CRAP)</h2><p class="sub">complexity&sup2; &times; (1 &minus; coverage)&sup3; + complexity &mdash; complex-and-untested first; &ge; 30 needs attention</p><div class="wrap"><table><thead><tr><th>Method</th><th class="num">Complexity</th><th class="num">Line cov</th><th class="num">CRAP</th><th></th></tr></thead><tbody>
+<tr><td><code>probe.Cond.neverCalled(n:int32)</code></td><td class="num">2</td><td class="num">0%</td><td class="num">6.0</td><td></td></tr>
+<tr><td><code>probe.Cond.both(b:int32,a:int32)</code></td><td class="num">3</td><td class="num">66%</td><td class="num">3.3</td><td></td></tr>
+<tr><td><code>probe.Cond.either(b:int32,a:int32)</code></td><td class="num">3</td><td class="num">66%</td><td class="num">3.3</td><td></td></tr>
+<tr><td><code>probe.Cond.guarded(n:int32)</code></td><td class="num">1</td><td class="num">0%</td><td class="num">2.0</td><td></td></tr>
+<tr><td><code>probe.Cond.loop(n:int32)</code></td><td class="num">2</td><td class="num">100%</td><td class="num">2.0</td><td></td></tr>
+<tr><td><code>probe.Cond.main()</code></td><td class="num">2</td><td class="num">75%</td><td class="num">2.0</td><td></td></tr>
+</tbody></table></div>
+<h2>Where the gaps are</h2><div class="legend"><span><i class="sw" style="background:var(--good)"></i>covered</span><span><i class="sw" style="background:var(--warn)"></i>partial branch</span><span><i class="sw" style="background:var(--bad)"></i>never executed</span><span class="muted">one cell = one measurable line, in source order</span></div>
+<div class="card"><h3>probe/Cond.cajeta</h3><div class="muted">65.0% lines &middot; 50.0% branches</div><div class="ribbon"><i class="c pt" title="line 5"></i><i class="c ok" title="line 6"></i><i class="c no" title="line 8"></i><i class="c pt" title="line 11"></i><i class="c ok" title="line 12"></i><i class="c no" title="line 14"></i><i class="c ok" title="line 17"></i><i class="c ok" title="line 18"></i><i class="c ok" title="line 19"></i><i class="c ok" title="line 20"></i><i class="c ok" title="line 21"></i><i class="c ok" title="line 23"></i><i class="c no" title="line 27"></i><i class="c no" title="line 31"></i><i class="c no" title="line 32"></i><i class="c no" title="line 34"></i><i class="c ok" title="line 37"></i><i class="c pt" title="line 38"></i><i class="c no" title="line 39"></i><i class="c ok" title="line 41"></i></div><div class="gap"><b>Dead code (1)</b> <span class="muted">— no call path from the entry reaches these. Delete rather than test.</span><br><code>probe.Cond.int32 neverCalled(int32 n)</code> <span class="muted">declared at probe/Cond.cajeta:30</span><br></div><div class="gap"><b>Reachable but never tested (1)</b><br><code>probe.Cond.int32 guarded(int32 n)</code> <span class="muted">declared at probe/Cond.cajeta:26</span> <span class="muted">— called from probe.Cond::main/0 at probe/Cond.cajeta:39</span><br></div><div class="gap"><b>Unexecuted lines (7)</b><br>line <b>8</b> in <code>probe.Cond.both(b:int32,a:int32)</code><br>line <b>14</b> in <code>probe.Cond.either(b:int32,a:int32)</code><br>line <b>27</b> in <code>probe.Cond.guarded(n:int32)</code><br>line <b>31</b> in <code>probe.Cond.neverCalled(n:int32)</code><br>line <b>32</b> in <code>probe.Cond.neverCalled(n:int32)</code><br>line <b>34</b> in <code>probe.Cond.neverCalled(n:int32)</code><br>line <b>39</b> in <code>probe.Cond.main()</code><br></div><div class="gap part"><b>Partially covered decisions (3)</b><br>line <b>5</b> in <code>probe.Cond.both(b:int32,a:int32)</code> &mdash; ran, but one arm was never taken<br>line <b>11</b> in <code>probe.Cond.either(b:int32,a:int32)</code> &mdash; ran, but one arm was never taken<br>line <b>38</b> in <code>probe.Cond.main()</code> &mdash; ran, but one arm was never taken<br><span class="muted">These look green at line grain. They are the highest-value tests to add.</span></div></div>
+</main></body></html>

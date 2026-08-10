@@ -1,0 +1,256 @@
+package cajeta.coco.util;
+
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+
+/**
+ * Byte-level text helpers the IR rewriter leans on.
+ *
+ * `cajeta.lang.String` deliberately ships a small surface: `indexOf` has no
+ * from-index and there is no `split`. Instrumentation walks megabytes of
+ * generated LLVM IR line by line, so the naive "substring the tail and search
+ * again" shape would be quadratic. Everything here scans raw bytes once.
+ *
+ * All indices are BYTE indices (matching String's own convention), never
+ * codepoint indices — LLVM IR is ASCII, so the two coincide in practice, but
+ * the byte contract is the one that stays correct on a stray UTF-8 identifier.
+ */
+public class Text {
+
+    /**
+     * First byte index of `needle` at or after `from`, or -1.
+     *
+     * The one primitive the rest of this class is built on: a plain forward
+     * scan with a first-byte check before the full compare.
+     */
+    public static int64 indexOfFrom(String haystack, String needle, int64 from) {
+        int32 hn = haystack.byteLength();
+        int32 nn = needle.byteLength();
+        if (nn == 0) { return from; }
+        if (nn > hn) { return -1; }
+        int64 start = from;
+        if (start < 0) { start = 0; }
+        int8 first = needle.byteAt(0);
+        int64 last = (int64) (hn - nn);
+        int64 i = start;
+        while (i <= last) {
+            if (haystack.byteAt((int32) i) == first) {
+                int32 j = 1;
+                boolean hit = true;
+                while (j < nn) {
+                    if (haystack.byteAt((int32) i + j) != needle.byteAt(j)) {
+                        hit = false;
+                        j = nn;
+                    } else {
+                        j = j + 1;
+                    }
+                }
+                if (hit) { return i; }
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    /** True when `s` contains `needle` at or after `from`. */
+    public static boolean containsFrom(String s, String needle, int64 from) {
+        return Text.indexOfFrom(s, needle, from) >= 0;
+    }
+
+    /**
+     * Split `s` on '\n' into owned lines, dropping a trailing '\r' so CRLF
+     * input round-trips. The terminator itself is not retained; the writer
+     * re-joins with '\n'.
+     */
+    public static #ArrayList<String> splitLines(String s) {
+        ArrayList<String> out #= heap ArrayList<String>();
+        int32 n = s.byteLength();
+        int32 start = 0;
+        int32 i = 0;
+        while (i < n) {
+            if (s.byteAt(i) == 10) {
+                int32 end = i;
+                if (end > start) {
+                    if (s.byteAt(end - 1) == 13) { end = end - 1; }
+                }
+                out.add(s.substring(start, end));
+                start = i + 1;
+            }
+            i = i + 1;
+        }
+        if (start < n) {
+            out.add(s.substring(start, n));
+        }
+        return #out;
+    }
+
+    /** Join `lines` with '\n', appending a trailing newline. */
+    public static #String joinLines(ArrayList<String> lines) {
+        StringBuilder sb = stack StringBuilder();
+        int32 i = 0;
+        int32 n = lines.count();
+        while (i < n) {
+            sb.append(lines.get(i));
+            sb.append("\n");
+            i = i + 1;
+        }
+        return sb.toString();
+    }
+
+    /** Leading-whitespace-stripped copy is `trim()`; this reports the indent width. */
+    public static int32 indentOf(String line) {
+        int32 n = line.byteLength();
+        int32 i = 0;
+        while (i < n) {
+            int8 c = line.byteAt(i);
+            if (c != 32 && c != 9) { return i; }
+            i = i + 1;
+        }
+        return n;
+    }
+
+    /**
+     * Parse the decimal integer starting at byte `from` (optionally signed),
+     * stopping at the first non-digit. Returns 0 when no digits are present —
+     * callers that must distinguish "0" from "absent" check the byte first.
+     */
+    public static int64 parseIntAt(String s, int64 from) {
+        int32 n = s.byteLength();
+        int64 i = from;
+        boolean neg = false;
+        if (i < n) {
+            if (s.byteAt((int32) i) == 45) { neg = true; i = i + 1; }
+        }
+        int64 v = 0;
+        while (i < n) {
+            int8 c = s.byteAt((int32) i);
+            if (c < 48 || c > 57) { i = n; }
+            else {
+                v = v * 10 + (int64) (c - 48);
+                i = i + 1;
+            }
+        }
+        if (neg) { return 0 - v; }
+        return v;
+    }
+
+    /**
+     * The decimal integer that follows `marker` in `line`, or -1 when the
+     * marker is absent. Used to lift `i32 41` out of a line_mark call.
+     */
+    public static int64 intAfter(String line, String marker) {
+        int64 at = Text.indexOfFrom(line, marker, 0);
+        if (at < 0) { return -1; }
+        return Text.parseIntAt(line, at + (int64) marker.byteLength());
+    }
+
+    /**
+     * The text between the first `open` at or after `from` and the next
+     * `close`, or an empty string when either delimiter is missing.
+     */
+    public static #String between(String s, String open, String close, int64 from) {
+        int64 a = Text.indexOfFrom(s, open, from);
+        if (a < 0) { return ""; }
+        int64 b = Text.indexOfFrom(s, close, a + (int64) open.byteLength());
+        if (b < 0) { return ""; }
+        return s.substring((int32) a + open.byteLength(), (int32) b);
+    }
+
+    /** Decimal rendering of `v`. */
+    public static #String fromInt(int64 v) {
+        if (v == 0) { return "0"; }
+        boolean neg = v < 0;
+        int64 x = v;
+        if (neg) { x = 0 - x; }
+        int8[] tmp #= heap int8[24];
+        int32 w = 0;
+        while (x > 0) {
+            tmp[w] = (int8) (48 + (int32) (x % 10));
+            x = x / 10;
+            w = w + 1;
+        }
+        int32 total = w;
+        if (neg) { total = total + 1; }
+        int8[] outb #= heap int8[total];
+        int32 o = 0;
+        if (neg) { outb[0] = 45; o = 1; }
+        int32 k = w;
+        while (k > 0) {
+            outb[o] = tmp[k - 1];
+            o = o + 1;
+            k = k - 1;
+        }
+        return heap String(#outb, total);
+    }
+
+    /**
+     * Percentage rendered to one decimal place, e.g. `86.4`. Deterministic —
+     * reports are diffed in CI, so float formatting must not drift.
+     */
+    public static #String percent(int64 covered, int64 total) {
+        if (total <= 0) { return "100.0"; }
+        int64 scaled = (covered * 1000) / total;
+        int64 whole = scaled / 10;
+        int64 frac = scaled % 10;
+        StringBuilder sb = stack StringBuilder();
+        sb.append(Text.fromInt(whole));
+        sb.append(".");
+        sb.append(Text.fromInt(frac));
+        return sb.toString();
+    }
+
+    /** Escape a string for embedding in JSON (and, transitively, in HTML data). */
+    public static #String jsonEscape(String s) {
+        StringBuilder sb = stack StringBuilder();
+        int32 n = s.byteLength();
+        int32 i = 0;
+        while (i < n) {
+            int8 c = s.byteAt(i);
+            if (c == 34) { sb.append("\\\""); }
+            else if (c == 92) { sb.append("\\\\"); }
+            else if (c == 10) { sb.append("\\n"); }
+            else if (c == 13) { sb.append("\\r"); }
+            else if (c == 9) { sb.append("\\t"); }
+            else if (c < 32) { sb.append(" "); }
+            else { sb.append(s.substring(i, i + 1)); }
+            i = i + 1;
+        }
+        return sb.toString();
+    }
+
+    /** Anchor-safe slug: every non-alphanumeric byte becomes '-'. */
+    public static #String slug(String s) {
+        StringBuilder sb = stack StringBuilder();
+        int32 n = s.byteLength();
+        int32 i = 0;
+        while (i < n) {
+            int8 c = s.byteAt(i);
+            boolean ok = false;
+            if (c >= 48 && c <= 57) { ok = true; }
+            if (c >= 65 && c <= 90) { ok = true; }
+            if (c >= 97 && c <= 122) { ok = true; }
+            if (ok) { sb.append(s.substring(i, i + 1)); }
+            else { sb.append("-"); }
+            i = i + 1;
+        }
+        return sb.toString();
+    }
+
+    /** Escape a string for HTML text/attribute content. */
+    public static #String htmlEscape(String s) {
+        StringBuilder sb = stack StringBuilder();
+        int32 n = s.byteLength();
+        int32 i = 0;
+        while (i < n) {
+            int8 c = s.byteAt(i);
+            if (c == 38) { sb.append("&amp;"); }
+            else if (c == 60) { sb.append("&lt;"); }
+            else if (c == 62) { sb.append("&gt;"); }
+            else if (c == 34) { sb.append("&quot;"); }
+            else { sb.append(s.substring(i, i + 1)); }
+            i = i + 1;
+        }
+        return sb.toString();
+    }
+}

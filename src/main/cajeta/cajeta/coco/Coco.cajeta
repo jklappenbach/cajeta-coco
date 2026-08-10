@@ -1,0 +1,418 @@
+package cajeta.coco;
+
+import cajeta.coco.analysis.Attribution;
+import cajeta.coco.analysis.CallGraph;
+import cajeta.coco.analysis.Conditions;
+import cajeta.coco.analysis.Coverage;
+import cajeta.coco.analysis.FileStats;
+import cajeta.coco.ir.IdGen;
+import cajeta.coco.ir.Instrumenter;
+import cajeta.coco.ir.Mutator;
+import cajeta.coco.model.HitProfile;
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteKind;
+import cajeta.coco.model.SiteTable;
+import cajeta.coco.report.Html;
+import cajeta.coco.report.Lcov;
+import cajeta.coco.report.Annotate;
+import cajeta.coco.report.Sarif;
+
+import cajeta.coco.util.Io;
+import cajeta.coco.util.Text;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+import cajeta.lang.System;
+
+/**
+ * cajeta-coco — coverage, dead-code and mutation analysis for cajeta.
+ *
+ * This is the engine's entry point. It works on explicit inputs (an IR module,
+ * a probe map, a profile) rather than discovering them itself, because
+ * `cajeta.io.file` has no directory walk in v1; the `coco` shell wrapper does
+ * the discovery and the toolchain orchestration (compile, `llc`, link) and
+ * calls in here for everything that is actual analysis.
+ *
+ * Subcommands:
+ *
+ *     coco-engine instrument <in.ll> <out.ll> <sites.tsv> [<base-id>]
+ *         Rewrite one module for coverage, appending its probe sites to
+ *         `sites.tsv`. `base-id` continues id assignment across modules, so a
+ *         whole project shares one dense id space.
+ *
+ *     coco-engine entry <in.ll> <out.ll> <symbol> <probe-count>
+ *         Add table sizing and profile dumping to the measured program's entry
+ *         method.
+ */
+public class Coco {
+
+    public static void main(String[] args) {
+        if (args == null) { Coco.usage(); return; }
+
+        // Platforms differ on whether argv[0] (the program path) is handed to
+        // the entry method, so the verb is located by name rather than by a
+        // fixed index. Everything after it is that verb's operands.
+        int64 at = Coco.verbIndex(args);
+        if (at < 0) { Coco.usage(); return; }
+
+        String cmd = args[at];
+        if (cmd.equals("instrument")) {
+            Coco.cmdInstrument(args, at);
+        } else if (cmd.equals("report")) {
+            Coco.cmdReport(args, at);
+        } else if (cmd.equals("mutants")) {
+            Coco.cmdMutants(args, at);
+        } else if (cmd.equals("mutate")) {
+            Coco.cmdMutate(args, at);
+        } else if (cmd.equals("lcov")) {
+            Coco.cmdLcov(args, at);
+        } else if (cmd.equals("sarif")) {
+            Coco.cmdSarif(args, at);
+        } else if (cmd.equals("annotate")) {
+            Coco.cmdAnnotate(args, at);
+        } else if (cmd.equals("hook-tests")) {
+            Coco.cmdHookTests(args, at);
+        } else if (cmd.equals("merge")) {
+            Coco.cmdMerge(args, at);
+        } else if (cmd.equals("attribution")) {
+            Coco.cmdAttribution(args, at);
+        } else {
+            Coco.cmdEntry(args, at);
+        }
+    }
+
+    /** Index of the first recognised verb, or -1. */
+    static int64 verbIndex(String[] args) {
+        int64 i = 0;
+        while (i < args.count()) {
+            String a = args[i];
+            if (a.equals("instrument")) { return i; }
+            if (a.equals("entry")) { return i; }
+            if (a.equals("report")) { return i; }
+            if (a.equals("mutants")) { return i; }
+            if (a.equals("mutate")) { return i; }
+            if (a.equals("lcov")) { return i; }
+            if (a.equals("sarif")) { return i; }
+            if (a.equals("annotate")) { return i; }
+            if (a.equals("attribution")) { return i; }
+            if (a.equals("merge")) { return i; }
+            if (a.equals("hook-tests")) { return i; }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    /**
+     * `report <sites.tsv> <coco.profile> <out.html> [<xref.json> <owner::method>]`
+     *
+     * With the optional xref + entry pair, uncovered methods are classified
+     * against static reachability (dead vs untested); without it the report is
+     * plain coverage.
+     */
+    static void cmdReport(String[] args, int64 at) {
+        if (args.count() < at + 4) {
+            System.stdout.println("coco: report <sites.tsv> <coco.profile> <out.html> [<xref.json> <owner::method>]");
+            return;
+        }
+        String sitesText #= Io.readAll(args[at + 1]);
+        ArrayList<Site> sites #= SiteTable.decode(sitesText);
+        String profText #= Io.readAll(args[at + 2]);
+        HitProfile profile #= HitProfile.decode(profText, "all");
+
+        CallGraph graph = null;
+        ArrayList<String> reachable #= heap ArrayList<String>();
+        if (args.count() >= at + 6) {
+            String entry = args[at + 5];
+            int64 sep = Text.indexOfFrom(entry, "::", 0);
+            if (sep > 0) {
+                CallGraph g #= CallGraph.parseFile(args[at + 4]);
+                String eOwner #= entry.substring(0, (int32) sep);
+                String eName #= entry.substring((int32) sep + 2, entry.byteLength());
+                // Coverage-seeded roots: every method that actually executed
+                // is proof of a live path (reflection, DI) the static graph
+                // cannot see. Without this, a reflectively-discovered test
+                // suite reaches almost nothing statically and live library
+                // code gets called "dead".
+                ArrayList<String> executed #= heap ArrayList<String>();
+                int32 si = 0;
+                while (si < sites.count()) {
+                    Site st = sites.get(si);
+                    if (st.getKind() == SiteKind.FUNCTION
+                        && profile.covered(st.getId())) {
+                        executed.add(CallGraph.keyOf(st.getOwner(), st.getMethod()));
+                    }
+                    si = si + 1;
+                }
+                ArrayList<String> r #= g.reachableFrom(eOwner, eName, executed);
+                // Use the graph only when it produced a real answer: no edges
+                // means the xref was missing or unreadable, and an empty
+                // reachable set means the entry was not found in it. Either
+                // way, classifying on it would mark everything "dead" — so the
+                // report degrades to plain coverage instead.
+                if (g.edgeCount() > 0 && r.count() > 0) {
+                    reachable #= r;
+                    graph #= g;
+                    System.stdout.println("coco: reachability from " + entry + ": "
+                                          + Text.fromInt((int64) reachable.count())
+                                          + " methods");
+                } else {
+                    System.stdout.println("coco: xref empty or entry not found; skipping dead-code classification");
+                }
+            }
+        }
+
+        ArrayList<FileStats> stats #= Coverage.summarize(sites, profile);
+        String html #= Html.render(sites, profile, stats, graph, reachable);
+        Io.writeAll(args[at + 3], html);
+
+        int64 lc = Coverage.totalLinesCovered(stats);
+        int64 lt = Coverage.totalLines(stats);
+        int64 bc = Coverage.totalBranchesCovered(stats);
+        int64 bt = Coverage.totalBranches(stats);
+        System.stdout.println("coco: lines " + Text.percent(lc, lt) + "% ("
+                              + Text.fromInt(lc) + "/" + Text.fromInt(lt)
+                              + ")  branches " + Text.percent(bc, bt) + "% ("
+                              + Text.fromInt(bc) + "/" + Text.fromInt(bt) + ")");
+        Conditions conds #= Conditions.analyze(sites, profile);
+        int64 ct = conds.totalDerivable();
+        if (ct > 0) {
+            System.stdout.println("coco: conditions " + Text.percent(conds.totalCovered(), ct)
+                                  + "% (" + Text.fromInt(conds.totalCovered()) + "/"
+                                  + Text.fromInt(ct) + " short-circuit operands both-ways)");
+        }
+        System.stdout.println("coco: report written to " + args[at + 3]);
+    }
+
+    static void cmdInstrument(String[] args, int64 at) {
+        if (args.count() < at + 4) {
+            System.stdout.println("coco: instrument <in.ll> <out.ll> <sites.tsv> [base-id]");
+            return;
+        }
+        String inPath = args[at + 1];
+        String outPath = args[at + 2];
+        String sitesPath = args[at + 3];
+
+        IdGen ids = heap IdGen();
+        if (args.count() >= at + 5) {
+            ids.seed(Text.parseIntAt(args[at + 4], 0));
+        }
+
+        String text #= Io.readAll(inPath);
+        ArrayList<Site> sites #= heap ArrayList<Site>();
+        String outIr #= Instrumenter.instrument(text, sites, ids);
+
+        Io.writeAll(outPath, outIr);
+        String encoded #= SiteTable.encode(sites);
+        Io.appendAll(sitesPath, encoded);
+
+        System.stdout.println("coco: instrumented " + inPath
+                              + " sites=" + Text.fromInt((int64) sites.count())
+                              + " next-id=" + Text.fromInt(ids.count()));
+    }
+
+    static void cmdEntry(String[] args, int64 at) {
+        if (args.count() < at + 5) {
+            System.stdout.println("coco: entry <in.ll> <out.ll> <symbol> <probe-count>");
+            return;
+        }
+        String inPath = args[at + 1];
+        String outPath = args[at + 2];
+        String symbol = args[at + 3];
+        int64 probes = Text.parseIntAt(args[at + 4], 0);
+
+        String text #= Io.readAll(inPath);
+        String outIr #= Instrumenter.instrumentEntry(text, symbol, probes);
+        Io.writeAll(outPath, outIr);
+        System.stdout.println("coco: entry wired in " + symbol);
+    }
+
+    /** `mutants <in.ll> <out.tsv>` — list this module's mutation sites. */
+    static void cmdMutants(String[] args, int64 at) {
+        if (args.count() < at + 3) {
+            System.stdout.println("coco: mutants <in.ll> <out.tsv>");
+            return;
+        }
+        String text #= Io.readAll(args[at + 1]);
+        String listing #= Mutator.enumerate(text);
+        Io.writeAll(args[at + 2], listing);
+    }
+
+    /** `mutate <in.ll> <out.ll> <site-index>` — apply one mutation. */
+    static void cmdMutate(String[] args, int64 at) {
+        if (args.count() < at + 4) {
+            System.stdout.println("coco: mutate <in.ll> <out.ll> <site-index>");
+            return;
+        }
+        String text #= Io.readAll(args[at + 1]);
+        String mutated #= Mutator.apply(text, Text.parseIntAt(args[at + 3], 0));
+        Io.writeAll(args[at + 2], mutated);
+    }
+
+    /** `lcov <sites.tsv> <coco.profile> <out.info>` — LCOV tracefile. */
+    static void cmdLcov(String[] args, int64 at) {
+        if (args.count() < at + 4) {
+            System.stdout.println("coco: lcov <sites.tsv> <coco.profile> <out.info>");
+            return;
+        }
+        String sitesText #= Io.readAll(args[at + 1]);
+        ArrayList<Site> sites #= SiteTable.decode(sitesText);
+        String profText #= Io.readAll(args[at + 2]);
+        HitProfile profile #= HitProfile.decode(profText, "all");
+        String info #= Lcov.render(sites, profile);
+        Io.writeAll(args[at + 3], info);
+        System.stdout.println("coco: lcov written to " + args[at + 3]);
+    }
+
+    /** `hook-tests <in.ll> <out.ll>` — inject the per-test attribution hook. */
+    static void cmdHookTests(String[] args, int64 at) {
+        if (args.count() < at + 3) {
+            System.stdout.println("coco: hook-tests <in.ll> <out.ll>");
+            return;
+        }
+        String text #= Io.readAll(args[at + 1]);
+        String patched #= Instrumenter.hookTests(text);
+        if (patched.byteLength() == 0) {
+            System.stdout.println("coco: hook-tests: recordResult not found or unexpected shape");
+            return;
+        }
+        Io.writeAll(args[at + 2], patched);
+        System.stdout.println("coco: test hook injected");
+    }
+
+    /** `merge <out.profile> <in...>` — sum profiles into one. */
+    static void cmdMerge(String[] args, int64 at) {
+        if (args.count() < at + 3) {
+            System.stdout.println("coco: merge <out.profile> <in...>");
+            return;
+        }
+        HitProfile total = null;
+        int64 i = at + 2;
+        while (i < args.count()) {
+            String text #= Io.readAll(args[i]);
+            if (text.byteLength() > 0) {
+                HitProfile p #= HitProfile.decode(text, "part");
+                if (total == null) {
+                    total #= p;
+                } else {
+                    if (p.size() > total.size()) {
+                        HitProfile grown #= heap HitProfile(p.size(), "all");
+                        grown.merge(total);
+                        total #= grown;
+                    }
+                    total.merge(p);
+                }
+            }
+            i = i + 1;
+        }
+        if (total == null) {
+            System.stdout.println("coco: merge: no readable inputs");
+            return;
+        }
+        String outText #= total.encode();
+        Io.writeAll(args[at + 1], outText);
+        System.stdout.println("coco: merged " + Text.fromInt(args.count() - at - 2)
+                              + " profiles, " + Text.fromInt(total.hitCount())
+                              + " probes hit");
+    }
+
+    /** `attribution <sites.tsv> <out.tsv> <test-profile...>` */
+    static void cmdAttribution(String[] args, int64 at) {
+        if (args.count() < at + 4) {
+            System.stdout.println("coco: attribution <sites.tsv> <out.tsv> <test-profile...>");
+            return;
+        }
+        String sitesText #= Io.readAll(args[at + 1]);
+        ArrayList<Site> sites #= SiteTable.decode(sitesText);
+
+        ArrayList<String> labels #= heap ArrayList<String>();
+        ArrayList<HitProfile> profiles #= heap ArrayList<HitProfile>();
+        int64 i = at + 3;
+        while (i < args.count()) {
+            String text #= Io.readAll(args[i]);
+            if (text.byteLength() > 0) {
+                String label #= HitProfile.labelOf(text);
+                if (label.byteLength() == 0) {
+                    label #= "t" + Text.fromInt(i - at - 3);
+                }
+                HitProfile p #= HitProfile.decode(text,
+                    label.substring(0, label.byteLength()));
+                labels.add(#label);
+                profiles.add(#p);
+            }
+            i = i + 1;
+        }
+        if (profiles.count() == 0) {
+            System.stdout.println("coco: attribution: no test profiles");
+            return;
+        }
+        String out #= Attribution.render(sites, labels, profiles);
+        Io.writeAll(args[at + 2], out);
+        System.stdout.println("coco: attribution over "
+                              + Text.fromInt((int64) profiles.count())
+                              + " tests written to " + args[at + 2]);
+    }
+
+    /** `sarif <sites.tsv> <coco.profile> <out.sarif> [<xref.json> <owner::method>]` */
+    static void cmdSarif(String[] args, int64 at) {
+        if (args.count() < at + 4) {
+            System.stdout.println("coco: sarif <sites.tsv> <coco.profile> <out.sarif> [<xref.json> <owner::method>]");
+            return;
+        }
+        String sitesText #= Io.readAll(args[at + 1]);
+        ArrayList<Site> sites #= SiteTable.decode(sitesText);
+        String profText #= Io.readAll(args[at + 2]);
+        HitProfile profile #= HitProfile.decode(profText, "all");
+
+        CallGraph graph = null;
+        ArrayList<String> reachable #= heap ArrayList<String>();
+        if (args.count() >= at + 6) {
+            String entry = args[at + 5];
+            int64 sep = Text.indexOfFrom(entry, "::", 0);
+            if (sep > 0) {
+                CallGraph g #= CallGraph.parseFile(args[at + 4]);
+                String eOwner #= entry.substring(0, (int32) sep);
+                String eName #= entry.substring((int32) sep + 2, entry.byteLength());
+                ArrayList<String> executed #= heap ArrayList<String>();
+                int32 si = 0;
+                while (si < sites.count()) {
+                    Site st = sites.get(si);
+                    if (st.getKind() == SiteKind.FUNCTION
+                        && profile.covered(st.getId())) {
+                        executed.add(CallGraph.keyOf(st.getOwner(), st.getMethod()));
+                    }
+                    si = si + 1;
+                }
+                ArrayList<String> r #= g.reachableFrom(eOwner, eName, executed);
+                if (g.edgeCount() > 0 && r.count() > 0) {
+                    reachable #= r;
+                    graph #= g;
+                }
+            }
+        }
+
+        ArrayList<FileStats> stats #= Coverage.summarize(sites, profile);
+        String json #= Sarif.render(sites, profile, stats, graph, reachable);
+        Io.writeAll(args[at + 3], json);
+        System.stdout.println("coco: sarif written to " + args[at + 3]);
+    }
+
+    /** `annotate <sites.tsv> <coco.profile> <src-root> <out.html>` */
+    static void cmdAnnotate(String[] args, int64 at) {
+        if (args.count() < at + 5) {
+            System.stdout.println("coco: annotate <sites.tsv> <coco.profile> <src-root> <out.html>");
+            return;
+        }
+        String sitesText #= Io.readAll(args[at + 1]);
+        ArrayList<Site> sites #= SiteTable.decode(sitesText);
+        String profText #= Io.readAll(args[at + 2]);
+        HitProfile profile #= HitProfile.decode(profText, "all");
+        String html #= Annotate.render(sites, profile, args[at + 3]);
+        Io.writeAll(args[at + 4], html);
+        System.stdout.println("coco: annotated source written to " + args[at + 4]);
+    }
+
+    static void usage() {
+        System.stdout.println("cajeta-coco engine");
+        System.stdout.println("  instrument <in.ll> <out.ll> <sites.tsv> [base-id]");
+        System.stdout.println("  entry <in.ll> <out.ll> <symbol> <probe-count>");
+    }
+}

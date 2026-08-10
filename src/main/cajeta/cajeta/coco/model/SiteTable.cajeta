@@ -1,0 +1,107 @@
+package cajeta.coco.model;
+
+import cajeta.coco.util.Text;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+
+/**
+ * The probe map — every site created by one instrumentation pass, persisted
+ * beside the instrumented IR so reporting is decoupled from instrumenting.
+ *
+ * That separation is what lets a build instrument once and then report many
+ * times (per-test attribution, mutation runs, a re-render with a different
+ * threshold) without recompiling anything.
+ *
+ * Wire format is tab-separated rather than JSON: the fields are fixed and
+ * positional, the file is machine-written and machine-read, and a hand-rolled
+ * JSON parser would be a liability for zero benefit. Free-text fields (paths,
+ * signatures) come last and are guaranteed tab-free by construction.
+ *
+ *     coco-sites v1
+ *     <id>\t<kind>\t<line>\t<decision>\t<file>\t<owner>\t<method>\t<block>\t<target>
+ */
+public class SiteTable {
+
+    /** Render `sites` in the probe-map wire format. */
+    public static #String encode(ArrayList<Site> sites) {
+        StringBuilder sb = stack StringBuilder();
+        sb.append("coco-sites v1\n");
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site s = sites.get(i);
+            sb.append(Text.fromInt(s.getId()));
+            sb.append("\t");
+            sb.append(s.getKind().toName());
+            sb.append("\t");
+            sb.append(Text.fromInt(s.getLine()));
+            sb.append("\t");
+            sb.append(Text.fromInt(s.getDecision()));
+            sb.append("\t");
+            sb.append(s.getFile());
+            sb.append("\t");
+            sb.append(s.getOwner());
+            sb.append("\t");
+            sb.append(s.getMethod());
+            sb.append("\t");
+            sb.append(s.getBlock());
+            sb.append("\t");
+            sb.append(s.getTarget());
+            sb.append("\n");
+            i = i + 1;
+        }
+        return sb.toString();
+    }
+
+    /** Parse the probe-map wire format. Malformed lines are skipped. */
+    public static #ArrayList<Site> decode(String text) {
+        ArrayList<Site> out #= heap ArrayList<Site>();
+        ArrayList<String> lines #= Text.splitLines(text);
+        int32 i = 0;
+        while (i < lines.count()) {
+            String l = lines.get(i);
+            if (l.startsWith("coco-sites") == false && l.byteLength() > 0) {
+                ArrayList<String> f #= SiteTable.splitTabs(l);
+                if (f.count() >= 9) {
+                    Site s #= heap Site(
+                        Text.parseIntAt(f.get(0), 0),
+                        f.get(4).substring(0, f.get(4).byteLength()),
+                        Text.parseIntAt(f.get(2), 0),
+                        f.get(5).substring(0, f.get(5).byteLength()),
+                        f.get(6).substring(0, f.get(6).byteLength()),
+                        SiteTable.kindOf(f.get(1)),
+                        Text.parseIntAt(f.get(3), 0),
+                        f.get(7).substring(0, f.get(7).byteLength()),
+                        f.get(8).substring(0, f.get(8).byteLength()));
+                    out.add(#s);
+                }
+            }
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /** Split one record on tabs, preserving empty trailing fields. */
+    static #ArrayList<String> splitTabs(String s) {
+        ArrayList<String> out #= heap ArrayList<String>();
+        int32 n = s.byteLength();
+        int32 start = 0;
+        int32 i = 0;
+        while (i < n) {
+            if (s.byteAt(i) == 9) {
+                out.add(s.substring(start, i));
+                start = i + 1;
+            }
+            i = i + 1;
+        }
+        out.add(s.substring(start, n));
+        return #out;
+    }
+
+    static SiteKind kindOf(String name) {
+        if (name.equals("function"))     { return SiteKind.FUNCTION; }
+        if (name.equals("branch-true"))  { return SiteKind.BRANCH_T; }
+        if (name.equals("branch-false")) { return SiteKind.BRANCH_F; }
+        return SiteKind.LINE;
+    }
+}

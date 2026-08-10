@@ -1,0 +1,72 @@
+package cajeta.coco.rt;
+
+/**
+ * The coverage probe runtime — the target of every probe call cajeta-coco
+ * injects into instrumented IR.
+ *
+ * Instrumented modules gain calls of the shape
+ *
+ *     call void @"cajeta.coco.rt.Probe::hit(id:int64)"(i64 <probe-id>)
+ *
+ * at statement boundaries, branch arms, and condition outcomes. Probe ids are
+ * dense and assigned by the instrumenter, so the counter table is a flat array
+ * indexed directly by id — no hashing, no allocation, no locking on the hot
+ * path. That matters: a probe fires on every statement of every test, so any
+ * per-hit allocation would dominate the run.
+ *
+ * This package is NEVER instrumented (the instrumenter skips `cajeta.coco.rt`),
+ * which is what keeps `hit` from recursing into itself.
+ */
+public class Probe {
+    /** Flat hit table, indexed by probe id. Sized by `init`. */
+    static int64[] counts;
+    /** Table capacity; 0 until `init` runs. */
+    static int64 capacity = 0;
+
+    /**
+     * Size the counter table. The instrumenter emits a call to this from the
+     * generated entry shim before any test code runs, passing the exact probe
+     * count it assigned.
+     */
+    public static void init(int64 n) {
+        Probe.counts #= heap int64[n];
+        Probe.capacity = n;
+        int64 i = 0;
+        while (i < n) {
+            Probe.counts[i] = 0;
+            i = i + 1;
+        }
+    }
+
+    /**
+     * Record one execution of `id`. Bounds-guarded so a stale profile from a
+     * partially-rebuilt tree degrades to a dropped sample rather than a crash.
+     */
+    public static void hit(int64 id) {
+        if (id < 0) { return; }
+        if (id >= Probe.capacity) { return; }
+        Probe.counts[id] = Probe.counts[id] + 1;
+    }
+
+    /** Read a single counter. Used by the dump writer and by tests. */
+    public static int64 countOf(int64 id) {
+        if (id < 0) { return 0; }
+        if (id >= Probe.capacity) { return 0; }
+        return Probe.counts[id];
+    }
+
+    /** Table capacity — the probe count the run was built against. */
+    public static int64 size() { return Probe.capacity; }
+
+    /**
+     * Reset every counter to zero. Per-test attribution calls this between
+     * tests so each test's hit set can be snapshotted independently.
+     */
+    public static void reset() {
+        int64 i = 0;
+        while (i < Probe.capacity) {
+            Probe.counts[i] = 0;
+            i = i + 1;
+        }
+    }
+}

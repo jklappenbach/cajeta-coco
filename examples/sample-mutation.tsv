@@ -1,0 +1,8 @@
+module	srcLine	mutation	verdict	method
+probe/Cond.ll	5	sgt->sge	SURVIVED	probe.Cond::both(b:int32,a:int32)
+probe/Cond.ll	5	sgt->sge	SURVIVED	probe.Cond::both(b:int32,a:int32)
+probe/Cond.ll	11	sgt->sge	SURVIVED	probe.Cond::either(b:int32,a:int32)
+probe/Cond.ll	11	sgt->sge	SURVIVED	probe.Cond::either(b:int32,a:int32)
+probe/Cond.ll	19	slt->sle	killed	probe.Cond::loop(n:int32)
+probe/Cond.ll	38	sgt->sge	SURVIVED	probe.Cond::main()
+probe/Cond.ll	31	sgt->sge	skipped-uncovered	probe.Cond::neverCalled(n:int32)

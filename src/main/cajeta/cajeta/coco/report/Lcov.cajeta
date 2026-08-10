@@ -1,0 +1,161 @@
+package cajeta.coco.report;
+
+import cajeta.coco.model.HitProfile;
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteKind;
+import cajeta.coco.util.IntList;
+import cajeta.coco.util.Text;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+
+/**
+ * LCOV tracefile (`lcov.info`) emitter.
+ *
+ * The HTML report is coco's own voice; this is the lingua franca. Every IDE
+ * coverage gutter, `genhtml`, Codecov/Coveralls uploader and diff-coverage
+ * bot speaks LCOV, so emitting it makes coco composable with the entire
+ * existing ecosystem for free.
+ *
+ * Records per source file:
+ *
+ *     SF:<path>
+ *     FNDA:<count>,<method>        one per instrumented function
+ *     DA:<line>,<count>            one per measurable line
+ *     BRDA:<line>,0,<i>,<count|->  one per branch arm ('-' = never evaluated)
+ *     LF: / LH:                    line totals
+ *     end_of_record
+ *
+ * DA's count is the MAX over the line's probes, not the sum — a line with
+ * three probes that each fired once executed once, and summing would invent
+ * executions the program never performed.
+ */
+public class Lcov {
+
+    public static #String render(ArrayList<Site> sites, HitProfile profile) {
+        StringBuilder sb #= heap StringBuilder();
+        ArrayList<String> files #= Lcov.distinctFiles(sites);
+
+        int32 f = 0;
+        while (f < files.count()) {
+            String file = files.get(f);
+            sb.append("SF:");
+            sb.append(file);
+            sb.append("\n");
+
+            // Functions.
+            int32 i = 0;
+            while (i < sites.count()) {
+                Site s = sites.get(i);
+                if (s.getFile().equals(file) && s.getKind() == SiteKind.FUNCTION) {
+                    sb.append("FNDA:");
+                    sb.append(Text.fromInt(profile.countOf(s.getId())));
+                    sb.append(",");
+                    sb.append(s.qualified());
+                    sb.append("\n");
+                }
+                i = i + 1;
+            }
+
+            // Lines: per-line max across the line's probes.
+            IntList lineNums #= heap IntList(sites.count());
+            IntList lineMax #= heap IntList(sites.count());
+            i = 0;
+            while (i < sites.count()) {
+                Site s = sites.get(i);
+                if (s.getFile().equals(file) && s.getKind() == SiteKind.LINE) {
+                    int64 c = profile.countOf(s.getId());
+                    int32 at = lineNums.indexOf(s.getLine());
+                    if (at < 0) {
+                        lineNums.add(s.getLine());
+                        lineMax.add(c);
+                    } else if (c > lineMax.get(at)) {
+                        lineMax.set(at, c);
+                    }
+                }
+                i = i + 1;
+            }
+            IntList order #= Lcov.ascending(lineNums);
+            int64 hit = 0;
+            int32 k = 0;
+            while (k < order.count()) {
+                int64 ln = order.get(k);
+                int64 c = lineMax.get(lineNums.indexOf(ln));
+                sb.append("DA:");
+                sb.append(Text.fromInt(ln));
+                sb.append(",");
+                sb.append(Text.fromInt(c));
+                sb.append("\n");
+                if (c > 0) { hit = hit + 1; }
+                k = k + 1;
+            }
+
+            // Branch arms, indexed per line in encounter order.
+            IntList brLineSeen #= heap IntList(sites.count());
+            IntList brIndex #= heap IntList(sites.count());
+            i = 0;
+            while (i < sites.count()) {
+                Site s = sites.get(i);
+                if (s.getFile().equals(file) && s.getKind().isBranch()) {
+                    int64 ln = s.getLine();
+                    int32 at = brLineSeen.indexOf(ln);
+                    int64 which = 0;
+                    if (at < 0) {
+                        brLineSeen.add(ln);
+                        brIndex.add(1);
+                    } else {
+                        which = brIndex.get(at);
+                        brIndex.set(at, which + 1);
+                    }
+                    int64 c = profile.countOf(s.getId());
+                    sb.append("BRDA:");
+                    sb.append(Text.fromInt(ln));
+                    sb.append(",0,");
+                    sb.append(Text.fromInt(which));
+                    sb.append(",");
+                    if (c > 0) { sb.append(Text.fromInt(c)); }
+                    else { sb.append("-"); }
+                    sb.append("\n");
+                }
+                i = i + 1;
+            }
+
+            sb.append("LF:");
+            sb.append(Text.fromInt((int64) order.count()));
+            sb.append("\nLH:");
+            sb.append(Text.fromInt(hit));
+            sb.append("\nend_of_record\n");
+            f = f + 1;
+        }
+        return sb.toString();
+    }
+
+    static #ArrayList<String> distinctFiles(ArrayList<Site> sites) {
+        ArrayList<String> out #= heap ArrayList<String>();
+        int32 i = 0;
+        while (i < sites.count()) {
+            String f = sites.get(i).getFile();
+            if (f.byteLength() > 0) {
+                boolean seen = false;
+                int32 j = 0;
+                while (j < out.count()) {
+                    if (out.get(j).equals(f)) { seen = true; j = out.count(); }
+                    else { j = j + 1; }
+                }
+                if (seen == false) { out.add(f.substring(0, f.byteLength())); }
+            }
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    static #IntList ascending(IntList src) {
+        IntList out #= heap IntList(src.count());
+        int32 i = 0;
+        while (i < src.count()) {
+            out.insertSorted(src.get(i));
+            i = i + 1;
+        }
+        return #out;
+    }
+}

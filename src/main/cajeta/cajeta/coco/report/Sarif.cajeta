@@ -1,0 +1,199 @@
+package cajeta.coco.report;
+
+import cajeta.coco.analysis.CallGraph;
+import cajeta.coco.analysis.Conditions;
+import cajeta.coco.analysis.Coverage;
+import cajeta.coco.analysis.FileStats;
+import cajeta.coco.model.HitProfile;
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteKind;
+import cajeta.coco.util.IntList;
+import cajeta.coco.util.Text;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+
+/**
+ * SARIF 2.1.0 emitter — coverage gaps as code-scanning findings.
+ *
+ * SARIF is what turns a coverage report from a page someone must remember to
+ * open into annotations on the pull request itself: GitHub code scanning,
+ * Azure DevOps and the SARIF viewers all ingest it. Each gap coco can
+ * articulate becomes one result with a rule id, a message that carries the
+ * *why*, and a physical location.
+ *
+ * Rules:
+ *   coco/dead-code                  error   — delete, don't test
+ *   coco/uncovered-line             warning
+ *   coco/untested-method            warning — reachable, with callers to imitate
+ *   coco/partial-branch             note    — ran, one arm never taken
+ *   coco/condition-missing-outcome  note    — short-circuit operand one-way
+ *
+ * Levels are chosen for PR ergonomics: dead code is an `error` because the
+ * remedy is unambiguous; everything else warns or notes so a coverage dip
+ * cannot drown a review.
+ */
+public class Sarif {
+
+    public static #String render(ArrayList<Site> sites, HitProfile profile,
+                                 ArrayList<FileStats> stats,
+                                 CallGraph graph, ArrayList<String> reachable) {
+        Conditions conds #= Conditions.analyze(sites, profile);
+        StringBuilder sb #= heap StringBuilder();
+
+        sb.append("{\"$schema\":\"https://json.schemastore.org/sarif-2.1.0.json\",");
+        sb.append("\"version\":\"2.1.0\",\"runs\":[{\"tool\":{\"driver\":{");
+        sb.append("\"name\":\"cajeta-coco\",\"informationUri\":\"https://cajeta.dev\",\"rules\":[");
+        Sarif.rule(sb, "coco/dead-code",
+            "Unreachable from the entry and from every executed method; delete rather than test");
+        sb.append(",");
+        Sarif.rule(sb, "coco/uncovered-line", "Line never executed by the suite");
+        sb.append(",");
+        Sarif.rule(sb, "coco/untested-method", "Method is reachable but no test enters it");
+        sb.append(",");
+        Sarif.rule(sb, "coco/partial-branch", "Decision executed but one arm was never taken");
+        sb.append(",");
+        Sarif.rule(sb, "coco/condition-missing-outcome",
+            "Short-circuit operand never took one of its outcomes");
+        sb.append("]}},\"results\":[");
+
+        boolean first = true;
+
+        // Never-entered methods, split dead vs untested when the graph is in
+        // hand — same classification (and same caveats) as the HTML report.
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site s = sites.get(i);
+            if (s.getKind() == SiteKind.FUNCTION
+                && profile.covered(s.getId()) == false) {
+                boolean dead = false;
+                String key #= CallGraph.keyOf(s.getOwner(), s.getMethod());
+                if (graph != null) {
+                    if (CallGraph.isIn(reachable, key) == false
+                        && Coverage.classAlive(sites, profile, s.getOwner()) == false) {
+                        dead = true;
+                    }
+                }
+                StringBuilder msg = stack StringBuilder();
+                String ruleId #= "";
+                String level #= "";
+                if (dead) {
+                    ruleId #= "coco/dead-code";
+                    level #= "error";
+                    msg.append("No call path from the entry or any executed code reaches ");
+                    msg.append(s.qualified());
+                    msg.append(". Delete rather than test.");
+                } else {
+                    ruleId #= "coco/untested-method";
+                    level #= "warning";
+                    msg.append(s.qualified());
+                    msg.append(" is reachable but never entered by the suite.");
+                    if (graph != null) {
+                        String callers #= graph.callersOf(key);
+                        if (callers.byteLength() > 0) {
+                            msg.append(" Called from ");
+                            msg.append(callers);
+                            msg.append(".");
+                        }
+                    }
+                }
+                int64 line = Sarif.declLineOf(graph, key, s);
+                String m #= msg.toString();
+                first = Sarif.result(sb, first, ruleId, level,
+                                     s.getFile(), line, m);
+            }
+            i = i + 1;
+        }
+
+        // Uncovered lines and partially-covered decisions, from the same
+        // per-file fold every other report format uses.
+        int32 f = 0;
+        while (f < stats.count()) {
+            FileStats st = stats.get(f);
+            IntList un = st.getUncoveredLines();
+            int32 u = 0;
+            while (u < un.count()) {
+                first = Sarif.result(sb, first, "coco/uncovered-line", "warning",
+                                     st.getFile(), un.get(u),
+                                     "Line never executed by the suite.");
+                u = u + 1;
+            }
+            IntList part = st.getPartialBranchLines();
+            int32 pb = 0;
+            while (pb < part.count()) {
+                first = Sarif.result(sb, first, "coco/partial-branch", "note",
+                                     st.getFile(), part.get(pb),
+                                     "Decision executed but one arm was never taken.");
+                pb = pb + 1;
+            }
+            f = f + 1;
+        }
+
+        // One-way short-circuit operands.
+        int32 c = 0;
+        while (c < conds.count()) {
+            if (conds.derivableAt(c) && conds.coveredAt(c) == false) {
+                StringBuilder msg = stack StringBuilder();
+                msg.append("Operand #");
+                msg.append(Text.fromInt(conds.ordinalAt(c)));
+                msg.append(" of this short-circuit decision was true ");
+                msg.append(Text.fromInt(conds.trueAt(c)));
+                msg.append("x and false ");
+                msg.append(Text.fromInt(conds.falseAt(c)));
+                msg.append("x over ");
+                msg.append(Text.fromInt(conds.evalAt(c)));
+                msg.append(" evaluations.");
+                String m #= msg.toString();
+                first = Sarif.result(sb, first, "coco/condition-missing-outcome",
+                                     "note", conds.fileAt(c), conds.lineAt(c), m);
+            }
+            c = c + 1;
+        }
+
+        sb.append("]}]}");
+        return sb.toString();
+    }
+
+    static void rule(StringBuilder sb, String id, String text) {
+        sb.append("{\"id\":\"");
+        sb.append(id);
+        sb.append("\",\"shortDescription\":{\"text\":\"");
+        sb.append(Text.jsonEscape(text));
+        sb.append("\"}}");
+    }
+
+    /** Append one result object; returns the new `first` flag. */
+    static boolean result(StringBuilder sb, boolean first, String ruleId,
+                          String level, String file, int64 line, String text) {
+        if (first == false) { sb.append(","); }
+        sb.append("{\"ruleId\":\"");
+        sb.append(ruleId);
+        sb.append("\",\"level\":\"");
+        sb.append(level);
+        sb.append("\",\"message\":{\"text\":\"");
+        sb.append(Text.jsonEscape(text));
+        sb.append("\"},\"locations\":[{\"physicalLocation\":{\"artifactLocation\":{\"uri\":\"");
+        sb.append(Text.jsonEscape(file));
+        sb.append("\"},\"region\":{\"startLine\":");
+        int64 ln = line;
+        if (ln < 1) { ln = 1; }
+        sb.append(Text.fromInt(ln));
+        sb.append("}}}]}");
+        return false;
+    }
+
+    /**
+     * Declaration line for an uncovered method: from the xref when present
+     * (exact), else the method's first probed line.
+     */
+    static int64 declLineOf(CallGraph graph, String key, Site s) {
+        if (graph != null) {
+            String at #= graph.declSiteOf(key);
+            int64 colon = Text.indexOfFrom(at, ":", 0);
+            if (colon > 0) {
+                return Text.parseIntAt(at, colon + 1);
+            }
+        }
+        return s.getLine();
+    }
+}

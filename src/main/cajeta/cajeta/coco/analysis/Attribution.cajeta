@@ -1,0 +1,157 @@
+package cajeta.coco.analysis;
+
+import cajeta.coco.model.HitProfile;
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteKind;
+import cajeta.coco.util.IntList;
+import cajeta.coco.util.Text;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+
+/**
+ * Per-test attribution — which test covers which line.
+ *
+ * Inputs are the per-test delta profiles the injected `ProbeDump::onTest`
+ * hook wrote (one per executed test, labeled). Two outputs, both aimed at a
+ * concrete decision rather than curiosity:
+ *
+ * - **Per-line covering tests.** A failing line's covering set is the
+ *   candidate list for what broke it; a line covered by exactly ONE test is
+ *   fragile — that test is load-bearing for the line's whole verification.
+ *
+ * - **Per-test unique coverage.** A test with `unique=0` exercises nothing
+ *   that other tests don't also exercise. That is a redundancy *signal*, not
+ *   a deletion verdict — a test can assert different properties over the same
+ *   lines — but it is where a suite audit starts.
+ */
+public class Attribution {
+
+    /**
+     * Render the attribution TSV.
+     *
+     * Header comments carry the per-test summary; data rows are
+     * `file<TAB>line<TAB>count<TAB>test|test|...` (list capped at four).
+     */
+    public static #String render(ArrayList<Site> sites,
+                                 ArrayList<String> labels,
+                                 ArrayList<HitProfile> profiles) {
+        StringBuilder sb #= heap StringBuilder();
+        sb.append("# coco-attribution v1\n");
+
+        // Per-test summaries first: covered lines and uniquely-covered lines.
+        int32 t = 0;
+        while (t < profiles.count()) {
+            int64 covered = 0;
+            int64 unique = 0;
+            int32 i = 0;
+            while (i < sites.count()) {
+                Site s = sites.get(i);
+                if (s.getKind() == SiteKind.LINE
+                    && Attribution.firstProbeOfLine(sites, i)) {
+                    boolean mine = Attribution.lineCoveredBy(
+                        sites, i, profiles.get(t));
+                    if (mine) {
+                        covered = covered + 1;
+                        boolean others = false;
+                        int32 o = 0;
+                        while (o < profiles.count()) {
+                            if (o != t && Attribution.lineCoveredBy(
+                                    sites, i, profiles.get(o))) {
+                                others = true;
+                                o = profiles.count();
+                            } else {
+                                o = o + 1;
+                            }
+                        }
+                        if (others == false) { unique = unique + 1; }
+                    }
+                }
+                i = i + 1;
+            }
+            sb.append("# test\t");
+            sb.append(labels.get(t));
+            sb.append("\tcovered=");
+            sb.append(Text.fromInt(covered));
+            sb.append("\tunique=");
+            sb.append(Text.fromInt(unique));
+            sb.append("\n");
+            t = t + 1;
+        }
+
+        // Per-line rows.
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site s = sites.get(i);
+            if (s.getKind() == SiteKind.LINE
+                && Attribution.firstProbeOfLine(sites, i)) {
+                int32 n = 0;
+                StringBuilder names = stack StringBuilder();
+                int32 p = 0;
+                while (p < profiles.count()) {
+                    if (Attribution.lineCoveredBy(sites, i, profiles.get(p))) {
+                        if (n < 4) {
+                            if (n > 0) { names.append("|"); }
+                            names.append(labels.get(p));
+                        }
+                        n = n + 1;
+                    }
+                    p = p + 1;
+                }
+                if (n > 0) {
+                    sb.append(s.getFile());
+                    sb.append("\t");
+                    sb.append(Text.fromInt(s.getLine()));
+                    sb.append("\t");
+                    sb.append(Text.fromInt((int64) n));
+                    sb.append("\t");
+                    String nm #= names.toString();
+                    sb.append(nm);
+                    if (n > 4) {
+                        sb.append("|+");
+                        sb.append(Text.fromInt((int64) (n - 4)));
+                    }
+                    sb.append("\n");
+                }
+            }
+            i = i + 1;
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Is site `i` the first LINE probe of its (file, line)? Lines can carry
+     * several probes; per-line work runs once, on the first.
+     */
+    static boolean firstProbeOfLine(ArrayList<Site> sites, int32 i) {
+        Site s = sites.get(i);
+        int32 j = 0;
+        while (j < i) {
+            Site q = sites.get(j);
+            if (q.getKind() == SiteKind.LINE
+                && q.getLine() == s.getLine()
+                && q.getFile().equals(s.getFile())) {
+                return false;
+            }
+            j = j + 1;
+        }
+        return true;
+    }
+
+    /** Any LINE probe of site-`i`'s line hit in `p`? */
+    static boolean lineCoveredBy(ArrayList<Site> sites, int32 i, HitProfile p) {
+        Site s = sites.get(i);
+        int32 j = 0;
+        while (j < sites.count()) {
+            Site q = sites.get(j);
+            if (q.getKind() == SiteKind.LINE
+                && q.getLine() == s.getLine()
+                && q.getFile().equals(s.getFile())
+                && p.covered(q.getId())) {
+                return true;
+            }
+            j = j + 1;
+        }
+        return false;
+    }
+}

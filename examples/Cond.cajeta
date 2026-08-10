@@ -1,0 +1,43 @@
+package probe;
+
+public class Cond {
+    public static int32 both(int32 a, int32 b) {
+        if (a > 0 && b > 0) {
+            return 1;
+        }
+        return 0;
+    }
+    public static int32 either(int32 a, int32 b) {
+        if (a > 0 || b > 0) {
+            return 1;
+        }
+        return 0;
+    }
+    public static int32 loop(int32 n) {
+        int32 s = 0;
+        int32 i = 0;
+        while (i < n) {
+            s = s + i;
+            i = i + 1;
+        }
+        return s;
+    }
+    /** Reachable from main behind a runtime-false guard — uncovered but NOT dead. */
+    public static int32 guarded(int32 n) {
+        return n + 41;
+    }
+    /** Never called from main — should surface as uncovered AND statically dead. */
+    public static int32 neverCalled(int32 n) {
+        if (n > 100) {
+            return 999;
+        }
+        return n * 2;
+    }
+    public static int32 main() {
+        int32 base = Cond.both(1,1) + Cond.either(0,1) + Cond.loop(3);
+        if (base > 100) {
+            return Cond.guarded(base);
+        }
+        return base;
+    }
+}

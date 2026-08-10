@@ -1,0 +1,374 @@
+#!/usr/bin/env bash
+# cajeta-coco — coverage, dead-code and mutation analysis for cajeta.
+#
+# This wrapper owns discovery and toolchain orchestration; every actual
+# analysis step runs in the Cajeta engine (`coco-engine`). The split exists for
+# one concrete reason: `cajeta.io.file` has no directory walk in v1, so file
+# discovery has to happen out here.
+#
+# ## Why the pipeline looks like this
+#
+# A cajeta front-end invocation costs ~80 s regardless of project size — it
+# re-parses and re-lowers the whole embedded stdlib every time (measured: 79 s
+# for `--emit=ir` on a two-class project; a second run is not cached). Any
+# design that shells back into `cajeta` per mutant or per instrumented rebuild
+# is therefore dead on arrival.
+#
+# So coco pays that cost exactly ONCE, harvests the emitted IR, and owns
+# everything downstream with LLVM tools directly:
+#
+#     cajeta --emit=ir          ~80 s   once per source change
+#     instrument (engine)       ~0.1 s  per module
+#     llc module -> .o          ~0.03 s per module
+#     link                      ~0.2 s  whole program
+#
+# That is what makes mutation testing viable: a mutant is one module re-lowered
+# and one link — well under a second — instead of a fresh 80 s compile.
+set -uo pipefail
+
+CAJETA="${CAJETA:-/home/julian/code/cpp/cajeta/build/src/cajeta}"
+LLVM_BIN="${LLVM_BIN:-/home/julian/code/cpp/cajeta-llvm/build-cajeta/bin}"
+LLC="$LLVM_BIN/llc"
+CC_BIN="${CC:-cc}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENGINE="${COCO_ENGINE:-$HERE/.build/coco-engine}"
+# coco's own build supplies three link inputs for the measured program:
+#   - the probe runtime objects (Probe.o / ProbeDump.o), already compiled and
+#     deliberately never instrumented;
+#   - __cajeta_tls.o and the OptiX stub, which cajeta generates during an
+#     --emit=exe link and which are toolchain-constant, not project-specific.
+# Reusing them avoids a second 80s front-end pass just to regenerate them.
+#   - the probe runtime, taken from an --emit=ir build (`.build-ir`) rather
+#     than the engine's exe build, because --emit=exe tree-shakes away
+#     Probe::hit: nothing in coco's own program calls it, since the calls only
+#     ever appear in instrumented target IR.
+RT_IR="${COCO_RT_IR:-$HERE/.build-ir/cajeta/coco/rt}"
+
+die() { echo "coco: $*" >&2; exit 1; }
+
+usage() {
+    cat <<'EOF'
+cajeta-coco — coverage, dead code and mutation analysis
+
+  coco run --src <source-root> --entry <pkg.Class.method> [--out <dir>]
+      Full pipeline: compile, instrument, link, run, report.
+
+  coco report --out <dir>
+      Re-render reports from an existing run (no rebuild).
+
+Options:
+  --src <dir>        Source root (e.g. src/main/cajeta)
+  --entry <sym>      Entry method, e.g. com.example.Tests.run
+  --out <dir>        Work + report directory (default: build/coco)
+  --classpath <cja>  Dependency archive(s), passed to the compiler verbatim
+  --profile <name>   @Profile for both passes (e.g. test)
+  --exclude <frag>   Path fragment to leave uninstrumented (repeatable;
+                     e.g. dev/cajeta/unit keeps the test framework out of
+                     the coverage denominator)
+  --keep             Keep intermediate IR
+EOF
+}
+
+SRC=""; ENTRY=""; OUT="build/coco"; CLASSPATH=""; PROFILE=""; EXCLUDES=()
+CMD="${1:-}"; shift || true
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --src)       SRC="$2"; shift 2 ;;
+        --entry)     ENTRY="$2"; shift 2 ;;
+        --out)       OUT="$2"; shift 2 ;;
+        --classpath) CLASSPATH="$2"; shift 2 ;;
+        --profile)   PROFILE="$2"; shift 2 ;;
+        --exclude)   EXCLUDES+=("$2"); shift 2 ;;
+        --keep)  shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) die "unknown option $1" ;;
+    esac
+done
+
+# Extra compiler flags shared by both front-end passes. DI resolves at compile
+# time, so --profile MUST match between the reference (exe) pass and the
+# instrumented (ir) pass or the two builds would wire different components.
+CAJ_FLAGS=()
+[ -n "$CLASSPATH" ] && CAJ_FLAGS+=("--classpath=$CLASSPATH")
+[ -n "$PROFILE" ]   && CAJ_FLAGS+=("--profile=$PROFILE")
+
+[ -x "$ENGINE" ] || die "engine not built: $ENGINE (build: cajeta --emit=exe --classpath=<dev.cajeta.xref .cja> -o .build/coco-engine cajeta.coco.Coco.main src/main/cajeta .build)"
+
+case "$CMD" in
+  run)
+    [ -n "$SRC" ]   || die "--src is required"
+    [ -n "$ENTRY" ] || die "--entry is required"
+    IRDIR="$OUT/ir"; OBJDIR="$OUT/obj"; RUNDIR="$OUT/run"
+    rm -rf "$IRDIR" "$OBJDIR" "$RUNDIR"
+    mkdir -p "$IRDIR" "$OBJDIR" "$RUNDIR"
+
+    # Two front-end passes, both one-time per source change.
+    #
+    # `--emit=ir` gives the per-class `.ll` we instrument. It does NOT give the
+    # program's C `main`: cajeta synthesizes that into the stdlib object during
+    # an `--emit=exe` link (it parses argv and materialises a Cajeta String[]),
+    # and reproducing it by hand would be a portability liability.
+    #
+    # So `--emit=exe` runs too, purely to harvest a linkable stdlib object that
+    # already carries `main`, plus `__cajeta_tls.o` and the OptiX stub. We then
+    # swap OUR instrumented user objects in over the ones it produced.
+    #
+    # `--tree-shake=off` is required, not incidental: the shaker prunes stdlib
+    # bodies unreachable from the entry, and coco's probe runtime — which is
+    # linked in afterwards and calls File/StringBuilder/String — is invisible to
+    # that analysis. Leaving it on drops exactly the code ProbeDump needs.
+    echo "coco: [1/7] compiling (two front-end passes, ~160s total)"
+    EXEDIR="$OUT/exe"; mkdir -p "$EXEDIR"
+    "$CAJETA" --emit=exe --tree-shake=off "${CAJ_FLAGS[@]}" -o "$EXEDIR/reference" \
+        "$ENTRY" "$SRC" "$EXEDIR" || die "cajeta --emit=exe failed"
+    "$CAJETA" --emit=ir --emit-xref="$OUT/xref.json" "${CAJ_FLAGS[@]}" \
+        "$ENTRY" "$SRC" "$IRDIR" || die "cajeta --emit=ir failed"
+
+    # Every emitted module except the stdlib blob and coco's own runtime (which
+    # must never be instrumented — its probes would recurse).
+    FIND_ARGS=("$IRDIR" -name '*.ll'
+        ! -name 'cajeta.runtime.__stdlib__.ll'
+        ! -path '*/cajeta/coco/rt/*')
+    for ex in "${EXCLUDES[@]:-}"; do
+        [ -n "$ex" ] && FIND_ARGS+=(! -path "*$ex*")
+    done
+    mapfile -t MODULES < <(find "${FIND_ARGS[@]}" | sort)
+    [ "${#MODULES[@]}" -gt 0 ] || die "no user modules emitted"
+
+    echo "coco: [2/7] instrumenting ${#MODULES[@]} modules"
+    SITES="$OUT/sites.tsv"; : > "$SITES"
+    NEXT=0
+    for m in "${MODULES[@]}"; do
+        line=$("$ENGINE" instrument "$m" "$m.inst" "$SITES" "$NEXT") || die "instrument failed: $m"
+        NEXT=$(printf '%s\n' "$line" | sed -n 's/.*next-id=\([0-9]*\).*/\1/p')
+        [ -n "$NEXT" ] || die "engine did not report next-id for $m"
+        mv "$m.inst" "$m"
+    done
+    echo "coco: assigned $NEXT probes"
+
+    # Wire the entry method: size the table, dump the profile on return.
+    ENTRY_CLASS="${ENTRY%.*}"
+    ENTRY_METHOD="${ENTRY##*.}"
+    ENTRY_LL="$IRDIR/$(echo "$ENTRY_CLASS" | tr '.' '/').ll"
+    [ -f "$ENTRY_LL" ] || die "entry module not found: $ENTRY_LL"
+    echo "coco: [3/7] wiring entry $ENTRY_CLASS::$ENTRY_METHOD"
+    "$ENGINE" entry "$ENTRY_LL" "$ENTRY_LL.wired" "${ENTRY_CLASS}::${ENTRY_METHOD}" "$NEXT" \
+        || die "entry wiring failed"
+    mv "$ENTRY_LL.wired" "$ENTRY_LL"
+
+    # [3b] Per-test attribution: patch cajeta-unit's Runner from the classpath
+    # archive so recordResult dumps a labeled per-test profile delta. The
+    # framework itself is unmodified — the patch is applied to the bitcode
+    # coco links, the same way everything else here works. Absence of the
+    # framework (or an unexpected recordResult shape) just disables the
+    # feature.
+    ATTRIBUTION=0
+    # Command substitution, not `list | grep -q`: under pipefail, grep -q's
+    # early exit SIGPIPEs the archive listing and the whole condition reads
+    # false — the feature silently never engages.
+    UNIT_LIST=$("$CAJETA" archive list "$CLASSPATH" 2>/dev/null || true)
+    if [ -n "$CLASSPATH" ] && [[ "$UNIT_LIST" == *"dev/cajeta/unit/Runner.bc"* ]]; then
+        echo "coco: [3b/7] injecting per-test attribution hook into Runner"
+        HOOKDIR="$OUT/hook"; mkdir -p "$HOOKDIR"
+        "$CAJETA" archive cat "$CLASSPATH" dev/cajeta/unit/Runner.bc \
+            > "$HOOKDIR/Runner.bc" 2>/dev/null || die "archive cat failed"
+        "$LLVM_BIN/llvm-dis" "$HOOKDIR/Runner.bc" -o "$HOOKDIR/Runner.ll" \
+            || die "llvm-dis failed on Runner.bc"
+        HOOK_OUT=$("$ENGINE" hook-tests "$HOOKDIR/Runner.ll" "$HOOKDIR/Runner.hooked.ll" || true)
+        if [[ "$HOOK_OUT" == *"test hook injected"* ]]; then
+            "$LLC" -filetype=obj -relocation-model=pic \
+                "$HOOKDIR/Runner.hooked.ll" -o "$OBJDIR/dev_cajeta_unit_Runner.ll.o" \
+                || die "llc failed on hooked Runner"
+            ATTRIBUTION=1
+        else
+            echo "coco: attribution hook not applicable; continuing without"
+        fi
+    fi
+
+    echo "coco: [4/7] lowering modules to objects"
+    # Every .ll the IR pass emitted is lowered — instrumented user modules and
+    # excluded (framework/dependency) modules alike; the stdlib object comes
+    # from the exe pass because it carries the synthesized C `main`. Anything
+    # the exe pass compiled that the IR pass did NOT emit as .ll (classes that
+    # stayed inside a classpath archive) is linked from its exe-pass object.
+    OBJS=("$EXEDIR/cajeta.runtime.__stdlib__.o")
+    [ -f "${OBJS[0]}" ] || die "stdlib object not found at ${OBJS[0]}"
+    LOWERED_RELS=()
+    if [ "$ATTRIBUTION" -eq 1 ]; then
+        OBJS+=("$OBJDIR/dev_cajeta_unit_Runner.ll.o")
+        LOWERED_RELS+=("dev/cajeta/unit/Runner")
+    fi
+    while IFS= read -r ll; do
+        rel="${ll#$IRDIR/}"
+        o="$OBJDIR/$(echo "$rel" | tr '/' '_').o"
+        "$LLC" -filetype=obj -relocation-model=pic "$ll" -o "$o" || die "llc failed: $ll"
+        OBJS+=("$o")
+        LOWERED_RELS+=("${rel%.ll}")
+    done < <(find "$IRDIR" -name '*.ll' ! -name 'cajeta.runtime.__stdlib__.ll' | sort)
+    # Classpath-archive classes surface in EXEDIR under DOTTED flat names
+    # (dev.cajeta.unit.Runner.o) while source-tree classes use directory
+    # paths — normalize both to the underscore form the lowered objects use.
+    while IFS= read -r xo; do
+        xrel="${xo#$EXEDIR/}"; xrel="${xrel%.o}"
+        xkey=$(echo "$xrel" | tr './' '__')
+        hit=0
+        for lr in "${LOWERED_RELS[@]:-}"; do
+            [ "$(echo "$lr" | tr './' '__')" = "$xkey" ] && { hit=1; break; }
+        done
+        [ "$hit" -eq 1 ] || OBJS+=("$xo")
+    done < <(find "$EXEDIR" -name '*.o' \
+        ! -name 'cajeta.runtime.__stdlib__.o' ! -name '__cajeta_tls.o' | sort)
+    # coco's probe runtime, lowered from untree-shaken IR.
+    for rt in Probe ProbeDump; do
+        src="$RT_IR/$rt.ll"
+        [ -f "$src" ] || die "probe runtime IR missing: $src (run: coco bootstrap)"
+        o="$OBJDIR/coco_rt_$rt.o"
+        "$LLC" -filetype=obj -relocation-model=pic "$src" -o "$o" || die "llc failed: $src"
+        OBJS+=("$o")
+    done
+
+    echo "coco: [5/7] linking"
+    BIN="$OUT/measured"
+    LINK_EXTRA=()
+    [ -f "$EXEDIR/__cajeta_tls.o" ] && LINK_EXTRA+=("$EXEDIR/__cajeta_tls.o")
+    [ -f "$EXEDIR/__cajeta_xpu_optix_stub.c" ] && LINK_EXTRA+=("$EXEDIR/__cajeta_xpu_optix_stub.c")
+    "$CC_BIN" "${OBJS[@]}" "${LINK_EXTRA[@]}" -o "$BIN" \
+        -lssl -lcrypto -lpthread -lm -ldl || die "link failed"
+
+    echo "coco: [6/7] running measured binary"
+    # The profile is written to the process's working directory, so the run
+    # happens inside RUNDIR and the binary is addressed absolutely.
+    BIN_ABS="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")"
+    ( cd "$RUNDIR" && "$BIN_ABS" ) ; echo "coco: exit $?"
+    [ -f "$RUNDIR/coco.profile" ] || die "no profile written (did the entry return normally?)"
+
+    # Per-test dumps (if the hook ran) merge with the exit residue into the
+    # aggregate profile every report reads; attribution renders alongside.
+    PROFILE_FOR_REPORT="$RUNDIR/coco.profile"
+    TESTPROFILES=("$RUNDIR"/coco-test-*.profile)
+    if [ "$ATTRIBUTION" -eq 1 ] && [ -e "${TESTPROFILES[0]}" ]; then
+        "$ENGINE" merge "$RUNDIR/coco.merged.profile" \
+            "${TESTPROFILES[@]}" "$RUNDIR/coco.profile" \
+            || die "profile merge failed"
+        PROFILE_FOR_REPORT="$RUNDIR/coco.merged.profile"
+        "$ENGINE" attribution "$SITES" "$OUT/attribution.tsv" \
+            "${TESTPROFILES[@]}" || die "attribution failed"
+        echo "coco: attribution at $OUT/attribution.tsv"
+    fi
+
+    echo "coco: [7/7] rendering report"
+    "$ENGINE" report "$SITES" "$PROFILE_FOR_REPORT" "$OUT/coverage.html" \
+        "$OUT/xref.json" "${ENTRY_CLASS}::${ENTRY_METHOD}" \
+        || die "report rendering failed"
+    "$ENGINE" lcov "$SITES" "$PROFILE_FOR_REPORT" "$OUT/lcov.info" >/dev/null \
+        || die "lcov emission failed"
+    "$ENGINE" sarif "$SITES" "$PROFILE_FOR_REPORT" "$OUT/coverage.sarif" \
+        "$OUT/xref.json" "${ENTRY_CLASS}::${ENTRY_METHOD}" >/dev/null \
+        || die "sarif emission failed"
+    "$ENGINE" annotate "$SITES" "$PROFILE_FOR_REPORT" "$SRC" "$OUT/annotated.html" \
+        >/dev/null || die "annotate emission failed"
+    echo "coco: report  at $OUT/coverage.html"
+    echo "coco: lcov    at $OUT/lcov.info"
+    echo "coco: sarif   at $OUT/coverage.sarif"
+    echo "coco: source  at $OUT/annotated.html"
+    echo "coco: profile at $RUNDIR/coco.profile"
+    echo "coco: sites   at $SITES"
+    ;;
+  report)
+    # Re-render from an existing run's artifacts — no rebuild, no re-run.
+    [ -f "$OUT/sites.tsv" ] || die "no run artifacts in $OUT (run 'coco run' first)"
+    ENTRY_ARG=()
+    if [ -n "$ENTRY" ] && [ -f "$OUT/xref.json" ]; then
+        ENTRY_ARG=("$OUT/xref.json" "${ENTRY%.*}::${ENTRY##*.}")
+    fi
+    "$ENGINE" report "$OUT/sites.tsv" "$OUT/run/coco.profile" "$OUT/coverage.html" \
+        "${ENTRY_ARG[@]}" || die "report rendering failed"
+    ;;
+
+  mutate)
+    # Mutation testing over a completed `coco run`. Every mutant is one llc +
+    # one relink + one execution — the sub-second path the pipeline was built
+    # around. Mutants in code the suite never executed are skipped: they
+    # cannot be killed, and the coverage report already names that code.
+    [ -f "$OUT/sites.tsv" ] || die "no run artifacts in $OUT (run 'coco run' first)"
+    PROFILE="$OUT/run/coco.profile"
+    [ -f "$PROFILE" ] || die "no profile at $PROFILE"
+    MUTDIR="$OUT/mut"
+    rm -rf "$MUTDIR"; mkdir -p "$MUTDIR"
+
+    # Baseline verdict: the suite's exit code on the unmutated build. For a
+    # test binary this is 0-green; any deviation under a mutant means the
+    # suite noticed the change.
+    BIN_ABS="$(cd "$(dirname "$OUT/measured")" && pwd)/measured"
+    ( cd "$MUTDIR" && timeout 60 "$BIN_ABS" >/dev/null 2>&1 )
+    E0=$?
+    echo "coco: baseline exit $E0"
+
+    # The link line, reconstructed once; per mutant we substitute one object.
+    # Mirrors the run step exactly, including exe-pass objects for classes the
+    # IR pass never emitted as .ll (classpath archives like dev.cajeta.unit) —
+    # a mutant link that forgets those fails on every Assert symbol.
+    EXEDIR="$OUT/exe"
+    STD_OBJS=("$EXEDIR/cajeta.runtime.__stdlib__.o")
+    RT_OBJS=("$OUT"/obj/coco_rt_*.o)
+    LINK_EXTRA=()
+    [ -f "$EXEDIR/__cajeta_tls.o" ] && LINK_EXTRA+=("$EXEDIR/__cajeta_tls.o")
+    [ -f "$EXEDIR/__cajeta_xpu_optix_stub.c" ] && LINK_EXTRA+=("$EXEDIR/__cajeta_xpu_optix_stub.c")
+    while IFS= read -r xo; do
+        xrel="${xo#$EXEDIR/}"; xrel="${xrel%.o}"
+        [ -f "$OUT/obj/$(echo "$xrel" | tr './' '__').ll.o" ] || LINK_EXTRA+=("$xo")
+    done < <(find "$EXEDIR" -name '*.o' \
+        ! -name 'cajeta.runtime.__stdlib__.o' ! -name '__cajeta_tls.o' | sort)
+
+    RESULTS="$OUT/mutation.tsv"
+    printf 'module\tsrcLine\tmutation\tverdict\tmethod\n' > "$RESULTS"
+    killed=0; survived=0; skipped=0
+    while IFS= read -r m; do
+        rel="${m#$OUT/ir/}"
+        myobj="$OUT/obj/$(echo "$rel" | tr '/' '_').o"
+        OTHERS=()
+        for o in "$OUT"/obj/*.o; do
+            [ "$o" = "$myobj" ] || OTHERS+=("$o")
+        done
+        "$ENGINE" mutants "$m" "$MUTDIR/list.tsv" >/dev/null || die "mutants failed: $m"
+        while IFS=$'\t' read -r idx srcline probeid from to method; do
+            [ -n "$idx" ] || continue
+            # Coverage gate: an unexecuted compare cannot be killed.
+            if [ "$probeid" -ge 0 ] && ! grep -q "^$probeid " "$PROFILE"; then
+                skipped=$((skipped+1))
+                printf '%s\t%s\t%s->%s\tskipped-uncovered\t%s\n' \
+                    "$rel" "$srcline" "$from" "$to" "$method" >> "$RESULTS"
+                continue
+            fi
+            "$ENGINE" mutate "$m" "$MUTDIR/mutant.ll" "$idx" >/dev/null \
+                || die "mutate failed: $m #$idx"
+            "$LLC" -filetype=obj -relocation-model=pic "$MUTDIR/mutant.ll" \
+                -o "$MUTDIR/mutant.o" || die "llc failed on mutant"
+            "$CC_BIN" "$MUTDIR/mutant.o" "${OTHERS[@]}" "${STD_OBJS[@]}" \
+                "${LINK_EXTRA[@]}" -o "$MUTDIR/mutant" \
+                -lssl -lcrypto -lpthread -lm -ldl || die "mutant link failed"
+            ( cd "$MUTDIR" && timeout 30 ./mutant >/dev/null 2>&1 )
+            E=$?
+            if [ "$E" -ne "$E0" ]; then
+                verdict=killed; killed=$((killed+1))
+            else
+                verdict=SURVIVED; survived=$((survived+1))
+            fi
+            printf '%s\t%s\t%s->%s\t%s\t%s\n' \
+                "$rel" "$srcline" "$from" "$to" "$verdict" "$method" >> "$RESULTS"
+        done < "$MUTDIR/list.tsv"
+    done < <(find "$OUT/ir" -name '*.ll' \
+        ! -name 'cajeta.runtime.__stdlib__.ll' \
+        ! -path '*/cajeta/coco/rt/*' | sort)
+
+    total=$((killed+survived))
+    echo "coco: mutation score: $killed/$total killed ($skipped skipped as uncovered)"
+    if [ "$survived" -gt 0 ]; then
+        echo "coco: SURVIVING mutants — these behavior changes went unnoticed by the suite:"
+        awk -F'\t' '$4=="SURVIVED" {printf "  %s:%s  %s in %s\n",$1,$2,$3,$5}' "$RESULTS"
+    fi
+    echo "coco: details at $RESULTS"
+    ;;
+  ""|-h|--help) usage ;;
+  *) die "unknown command '$CMD'" ;;
+esac

@@ -1,0 +1,574 @@
+package cajeta.coco.ir;
+
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteKind;
+import cajeta.coco.util.Text;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+
+/**
+ * Rewrites compiler-emitted LLVM IR to record coverage.
+ *
+ * ## Why the IR and not the source
+ *
+ * The cajeta compiler already emits, by default (`--debug-info=line`), a
+ * `__cajeta_line_mark(<line>)` call at every statement boundary — placed inside
+ * whichever basic block the statement lands in. That is an exact statement map
+ * produced by the front end itself, so instrumentation needs no cajeta parser
+ * and cannot drift from the compiler's own idea of where a statement begins.
+ * Branch structure is likewise already explicit in the CFG.
+ *
+ * ## What it emits
+ *
+ * - **Function** — one probe after the prologue's `__cajeta_line_enter`.
+ * - **Line** — one probe after each `__cajeta_line_mark`.
+ * - **Branch / condition** — every `br i1` has BOTH its edges split through
+ *   generated trampoline blocks that count the arm and jump on:
+ *
+ *       br i1 %c, label %if_then, label %if_merge
+ *   becomes
+ *       br i1 %c, label %coco.t.7, label %coco.f.8
+ *       ...
+ *       coco.t.7:
+ *         call void @"cajeta.coco.rt.Probe::hit(id:int64)"(i64 7)
+ *         br label %if_then
+ *
+ *   Trampolines rather than a probe at the head of the target block, because a
+ *   block reachable from two different branches would otherwise conflate their
+ *   arms: an arm is a property of the EDGE, not of the target block.
+ *
+ * ## Splitting an edge means fixing the phis
+ *
+ * A `phi` names its predecessor blocks, so redirecting `P -> S` through a
+ * trampoline invalidates any `[ v, %P ]` operand in S. This matters in real
+ * code rather than in theory: cajeta lowers `a && b` to
+ *
+ *       entry:       br i1 %lhs, label %land_rhs, label %land_merge
+ *       land_rhs:    ... br label %land_merge
+ *       land_merge:  %d = phi i1 [ %rhs, %land_rhs ], [ false, %entry ]
+ *
+ * so the commonest interesting decision in any codebase is exactly the shape
+ * that carries a phi. Instrumentation therefore processes a function as a unit
+ * and repoints those operands at the trampoline that now precedes the block.
+ * Every split records a patch; patches are applied before the function is
+ * emitted, so the IR that leaves here is always well-formed.
+ */
+public class Instrumenter {
+
+    /** The probe entry point, as it appears in a call instruction. */
+    public static #String probeSymbol() {
+        return "@\"cajeta.coco.rt.Probe::hit(id:int64)\"";
+    }
+
+    /** A probe call for `id`, indented as a function body instruction. */
+    static #String probeCall(int64 id) {
+        StringBuilder sb = stack StringBuilder();
+        sb.append("  call void ");
+        sb.append(Instrumenter.probeSymbol());
+        sb.append("(i64 ");
+        sb.append(Text.fromInt(id));
+        sb.append(")");
+        return sb.toString();
+    }
+
+    /**
+     * Instrument one module's IR text.
+     *
+     * Appends every probe site created to `sites` and draws ids from `ids`;
+     * both are shared across the whole run so ids stay dense and unique.
+     */
+    public static #String instrument(String llText, ArrayList<Site> sites, IdGen ids) {
+        ArrayList<String> lines #= Text.splitLines(llText);
+        ArrayList<String> out #= heap ArrayList<String>();
+        String file #= Instrumenter.sourceFileOf(lines);
+
+        int32 i = 0;
+        int32 n = lines.count();
+        while (i < n) {
+            String line = lines.get(i);
+            if (Instrumenter.isDefine(line)) {
+                int32 end = Instrumenter.functionEnd(lines, i);
+                Instrumenter.instrumentFunction(lines, i, end, file, sites, ids, out);
+                i = end + 1;
+            } else {
+                out.add(line.substring(0, line.byteLength()));
+                i = i + 1;
+            }
+        }
+
+        out.add("");
+        out.add("; --- cajeta-coco instrumentation ---");
+        StringBuilder dec = stack StringBuilder();
+        dec.append("declare void ");
+        dec.append(Instrumenter.probeSymbol());
+        dec.append("(i64)");
+        out.add(dec.toString());
+
+        return Text.joinLines(out);
+    }
+
+    /**
+     * Instrument the function spanning `[defineIdx, endIdx]`, appending its
+     * rewritten lines (including the closing brace) to `out`.
+     */
+    static void instrumentFunction(ArrayList<String> lines, int32 defineIdx,
+                                   int32 endIdx, String file,
+                                   ArrayList<Site> sites, IdGen ids,
+                                   ArrayList<String> out) {
+        String defLine = lines.get(defineIdx);
+        String owner #= Instrumenter.ownerOf(defLine);
+        String method #= Instrumenter.methodOf(defLine);
+
+        // Synthesized functions — reflect_invoke, reflect_new, class-reg
+        // ctors, drops — have no mangled `@"Class::method"` symbol and no
+        // statements. Instrumenting them would add branch arms nobody can
+        // write a test for (reflection dispatch compares) to the denominator,
+        // capping honest branch coverage below 100%. Copied through untouched.
+        if (owner.byteLength() == 0) {
+            int32 c = defineIdx;
+            while (c <= endIdx) {
+                String cl = lines.get(c);
+                out.add(cl.substring(0, cl.byteLength()));
+                c = c + 1;
+            }
+            return;
+        }
+
+        ArrayList<String> body #= heap ArrayList<String>();
+        ArrayList<String> tramps #= heap ArrayList<String>();
+        // Parallel patch lists: in block `patchBlock[k]`, a phi operand naming
+        // `patchOld[k]` becomes `patchNew[k]`.
+        ArrayList<String> patchBlock #= heap ArrayList<String>();
+        ArrayList<String> patchOld #= heap ArrayList<String>();
+        ArrayList<String> patchNew #= heap ArrayList<String>();
+
+        String curBlock #= "entry";
+        int64 lastLine = 0;
+
+        int32 i = defineIdx + 1;
+        while (i < endIdx) {
+            String line = lines.get(i);
+
+            if (Instrumenter.isBlockLabel(line)) {
+                curBlock #= Instrumenter.blockLabelOf(line);
+                body.add(line.substring(0, line.byteLength()));
+            } else if (Text.containsFrom(line, "@__cajeta_line_enter(", 0)) {
+                body.add(line.substring(0, line.byteLength()));
+                int64 id = ids.take();
+                sites.add(heap Site(id, file.substring(0, file.byteLength()), 0,
+                                    owner.substring(0, owner.byteLength()),
+                                    method.substring(0, method.byteLength()),
+                                    SiteKind.FUNCTION, -1, "", ""));
+                body.add(Instrumenter.probeCall(id));
+            } else if (Text.containsFrom(line, "@__cajeta_line_mark(i32 ", 0)) {
+                body.add(line.substring(0, line.byteLength()));
+                lastLine = Text.intAfter(line, "@__cajeta_line_mark(i32 ");
+                int64 id = ids.take();
+                sites.add(heap Site(id, file.substring(0, file.byteLength()), lastLine,
+                                    owner.substring(0, owner.byteLength()),
+                                    method.substring(0, method.byteLength()),
+                                    SiteKind.LINE, -1, "", ""));
+                body.add(Instrumenter.probeCall(id));
+            } else if (Instrumenter.isCondBranch(line)
+                       && Instrumenter.isGuardBranch(
+                              Instrumenter.branchTarget(line, 0),
+                              Instrumenter.branchTarget(line, 1))) {
+                // A compiler-inserted safety check (bounds / overflow / divide
+                // / cast), not a branch anyone wrote. Its trap arm is
+                // unreachable by design, so counting it would permanently cap
+                // branch coverage below 100% and bury the real gaps under
+                // noise no test can ever close. Left untouched — the statement
+                // still gets its line probe.
+                body.add(line.substring(0, line.byteLength()));
+            } else if (Instrumenter.isCondBranch(line)) {
+                int64 idT = ids.take();
+                int64 idF = ids.take();
+                String cond #= Instrumenter.branchCond(line);
+                String tgtT #= Instrumenter.branchTarget(line, 0);
+                String tgtF #= Instrumenter.branchTarget(line, 1);
+
+                sites.add(heap Site(idT, file.substring(0, file.byteLength()), lastLine,
+                                    owner.substring(0, owner.byteLength()),
+                                    method.substring(0, method.byteLength()),
+                                    SiteKind.BRANCH_T, -1,
+                                    curBlock.substring(0, curBlock.byteLength()),
+                                    tgtT.substring(0, tgtT.byteLength())));
+                sites.add(heap Site(idF, file.substring(0, file.byteLength()), lastLine,
+                                    owner.substring(0, owner.byteLength()),
+                                    method.substring(0, method.byteLength()),
+                                    SiteKind.BRANCH_F, -1,
+                                    curBlock.substring(0, curBlock.byteLength()),
+                                    tgtF.substring(0, tgtF.byteLength())));
+
+                String labT #= Instrumenter.trampLabel("coco.t.", idT);
+                String labF #= Instrumenter.trampLabel("coco.f.", idF);
+
+                StringBuilder br = stack StringBuilder();
+                br.append("  br i1 ");
+                br.append(cond);
+                br.append(", label %");
+                br.append(labT);
+                br.append(", label %");
+                br.append(labF);
+                body.add(br.toString());
+
+                tramps.add(Instrumenter.trampoline(labT, idT, tgtT));
+                tramps.add(Instrumenter.trampoline(labF, idF, tgtF));
+
+                // Any phi in a target block that names this block as a
+                // predecessor must now name the trampoline instead.
+                patchBlock.add(tgtT.substring(0, tgtT.byteLength()));
+                patchOld.add(curBlock.substring(0, curBlock.byteLength()));
+                patchNew.add(labT.substring(0, labT.byteLength()));
+                patchBlock.add(tgtF.substring(0, tgtF.byteLength()));
+                patchOld.add(curBlock.substring(0, curBlock.byteLength()));
+                patchNew.add(labF.substring(0, labF.byteLength()));
+            } else {
+                body.add(line.substring(0, line.byteLength()));
+            }
+            i = i + 1;
+        }
+
+        Instrumenter.applyPhiPatches(body, patchBlock, patchOld, patchNew);
+
+        out.add(defLine.substring(0, defLine.byteLength()));
+        int32 b = 0;
+        while (b < body.count()) {
+            String bl = body.get(b);
+            out.add(bl.substring(0, bl.byteLength()));
+            b = b + 1;
+        }
+        int32 t = 0;
+        while (t < tramps.count()) {
+            String tl = tramps.get(t);
+            out.add(tl.substring(0, tl.byteLength()));
+            t = t + 1;
+        }
+        String close = lines.get(endIdx);
+        out.add(close.substring(0, close.byteLength()));
+    }
+
+    /**
+     * Repoint phi predecessor operands after edge splitting.
+     *
+     * Walks the emitted body tracking the current block, and for each `phi`
+     * line rewrites `, %<old> ]` to `, %<new> ]` for every patch registered
+     * against that block. Matching includes the `, %` prefix and ` ]` suffix so
+     * a block name that is a prefix of another (`if_merge` vs `if_merge2`)
+     * cannot be hit by accident.
+     */
+    static void applyPhiPatches(ArrayList<String> body, ArrayList<String> patchBlock,
+                                ArrayList<String> patchOld, ArrayList<String> patchNew) {
+        if (patchBlock.count() == 0) { return; }
+        String cur #= "entry";
+        int32 i = 0;
+        while (i < body.count()) {
+            String line = body.get(i);
+            if (Instrumenter.isBlockLabel(line)) {
+                cur #= Instrumenter.blockLabelOf(line);
+            } else if (Text.containsFrom(line, " = phi ", 0)) {
+                String updated #= line.substring(0, line.byteLength());
+                int32 p = 0;
+                while (p < patchBlock.count()) {
+                    if (patchBlock.get(p).equals(cur)) {
+                        StringBuilder from = stack StringBuilder();
+                        from.append(", %");
+                        from.append(patchOld.get(p));
+                        from.append(" ]");
+                        StringBuilder to = stack StringBuilder();
+                        to.append(", %");
+                        to.append(patchNew.get(p));
+                        to.append(" ]");
+                        String f #= from.toString();
+                        String t #= to.toString();
+                        String next #= updated.replace(f, t);
+                        updated #= next;
+                    }
+                    p = p + 1;
+                }
+                body.set(i, #updated);
+            }
+            i = i + 1;
+        }
+    }
+
+    /** `coco.t.<id>` / `coco.f.<id>`. */
+    static #String trampLabel(String prefix, int64 id) {
+        StringBuilder sb = stack StringBuilder();
+        sb.append(prefix);
+        sb.append(Text.fromInt(id));
+        return sb.toString();
+    }
+
+    /** One trampoline block: count `id`, then jump to `target`. */
+    static #String trampoline(String label, int64 id, String target) {
+        StringBuilder sb = stack StringBuilder();
+        sb.append(label);
+        sb.append(":\n");
+        sb.append(Instrumenter.probeCall(id));
+        sb.append("\n  br label %");
+        sb.append(target);
+        return sb.toString();
+    }
+
+    /**
+     * Wire the measured program's entry method for collection.
+     *
+     * Two injections into the function whose mangled symbol contains `symbol`:
+     *
+     * - `Probe::init(<probeCount>)` immediately after the prologue's
+     *   `__cajeta_line_enter`, sizing the flat counter table before any
+     *   instrumented code can run.
+     * - `ProbeDump::dump()` before every `ret`, so the profile lands however
+     *   the entry returns.
+     *
+     * Injecting here rather than relying on an exit hook keeps the runtime free
+     * of atexit machinery, and placing `init` after the prologue rather than at
+     * the top of the entry block leaves the entry block's leading allocas
+     * undisturbed — LLVM only treats allocas as static when nothing precedes
+     * them, and perturbing that would change the codegen we are measuring.
+     */
+    public static #String instrumentEntry(String llText, String symbol, int64 probeCount) {
+        ArrayList<String> lines #= Text.splitLines(llText);
+        ArrayList<String> out #= heap ArrayList<String>();
+
+        boolean inTarget = false;
+        int32 i = 0;
+        int32 n = lines.count();
+        while (i < n) {
+            String line = lines.get(i);
+
+            if (Instrumenter.isDefine(line)) {
+                inTarget = Text.containsFrom(line, symbol, 0);
+                out.add(line.substring(0, line.byteLength()));
+            } else if (inTarget && line.startsWith("}")) {
+                inTarget = false;
+                out.add(line.substring(0, line.byteLength()));
+            } else if (inTarget && Text.containsFrom(line, "@__cajeta_line_enter(", 0)) {
+                out.add(line.substring(0, line.byteLength()));
+                StringBuilder sb = stack StringBuilder();
+                sb.append("  call void @\"cajeta.coco.rt.Probe::init(n:int64)\"(i64 ");
+                sb.append(Text.fromInt(probeCount));
+                sb.append(")");
+                out.add(sb.toString());
+            } else if (inTarget && Instrumenter.isReturn(line)) {
+                out.add("  call void @\"cajeta.coco.rt.ProbeDump::dump()\"()");
+                out.add(line.substring(0, line.byteLength()));
+            } else {
+                out.add(line.substring(0, line.byteLength()));
+            }
+            i = i + 1;
+        }
+
+        out.add("");
+        out.add("; --- cajeta-coco entry wiring ---");
+        out.add("declare void @\"cajeta.coco.rt.Probe::init(n:int64)\"(i64)");
+        out.add("declare void @\"cajeta.coco.rt.ProbeDump::dump()\"()");
+        return Text.joinLines(out);
+    }
+
+    /**
+     * Inject the per-test attribution hook into cajeta-unit's Runner IR.
+     *
+     * `Runner::recordResult(runner, name, ok, msg)` is the one point the
+     * framework passes through exactly once per executed test with the test's
+     * name in hand. This patch inserts, right after its prologue's
+     * `__cajeta_line_enter`:
+     *
+     *     call void @"cajeta.coco.rt.ProbeDump::onTest(name:cajeta.lang.String)"(ptr %1, i64 0)
+     *
+     * `ptr %1` is the `name` parameter: cajeta lowers parameters in SOURCE
+     * order (runner, name, ok, msg -> ptr, ptr, i1, ptr + title word), which
+     * was verified against the compiler's own `__cajeta_dbg_local` metadata —
+     * the mangled symbol reorders its parameter list, so the symbol is NOT
+     * the authority here. The trailing `i64 0` is the borrow title word,
+     * matching how Runner's own callers pass String arguments.
+     *
+     * Returns empty when the expected shape is not found — the driver treats
+     * that as "attribution unavailable" rather than linking a bad patch.
+     */
+    public static #String hookTests(String llText) {
+        ArrayList<String> lines #= Text.splitLines(llText);
+        ArrayList<String> out #= heap ArrayList<String>();
+
+        boolean inTarget = false;
+        boolean applied = false;
+        int32 i = 0;
+        while (i < lines.count()) {
+            String line = lines.get(i);
+            if (line.startsWith("define ")
+                && Text.containsFrom(line, "dev.cajeta.unit.Runner::recordResult(", 0)) {
+                // The injection is only correct for the parameter layout it
+                // was designed against; refuse anything else.
+                if (Text.containsFrom(line, "(ptr %0, ptr %1, i1 %2, ptr %3", 0) == false) {
+                    return "";
+                }
+                inTarget = true;
+                out.add(line.substring(0, line.byteLength()));
+            } else if (inTarget && line.startsWith("}")) {
+                inTarget = false;
+                out.add(line.substring(0, line.byteLength()));
+            } else if (inTarget && applied == false
+                       && Text.containsFrom(line, "@__cajeta_line_enter(", 0)) {
+                out.add(line.substring(0, line.byteLength()));
+                out.add("  call void @\"cajeta.coco.rt.ProbeDump::onTest(name:cajeta.lang.String)\"(ptr %1, i64 0)");
+                applied = true;
+            } else {
+                out.add(line.substring(0, line.byteLength()));
+            }
+            i = i + 1;
+        }
+        if (applied == false) { return ""; }
+
+        out.add("");
+        out.add("; --- cajeta-coco test attribution hook ---");
+        out.add("declare void @\"cajeta.coco.rt.ProbeDump::onTest(name:cajeta.lang.String)\"(ptr, i64)");
+        return Text.joinLines(out);
+    }
+
+    /** A `ret` terminator (`ret void`, `ret i32 %x`, ...). */
+    static boolean isReturn(String line) {
+        String t #= line.trim();
+        if (t.startsWith("ret ")) { return true; }
+        return t.equals("ret void");
+    }
+
+    /** Index of the `}` closing the function opened at `defineIdx`. */
+    static int32 functionEnd(ArrayList<String> lines, int32 defineIdx) {
+        int32 i = defineIdx + 1;
+        int32 n = lines.count();
+        while (i < n) {
+            if (lines.get(i).startsWith("}")) { return i; }
+            i = i + 1;
+        }
+        return n - 1;
+    }
+
+    /**
+     * A basic-block label: an identifier in column 0 ending in `:`, possibly
+     * followed by a `; preds = ...` comment.
+     */
+    static boolean isBlockLabel(String line) {
+        int32 n = line.byteLength();
+        if (n == 0) { return false; }
+        int8 c0 = line.byteAt(0);
+        boolean lower = c0 >= 97 && c0 <= 122;
+        boolean upper = c0 >= 65 && c0 <= 90;
+        boolean dot = c0 == 46;
+        boolean us = c0 == 95;
+        if (lower == false && upper == false && dot == false && us == false) {
+            return false;
+        }
+        int32 i = 0;
+        while (i < n) {
+            if (line.byteAt(i) == 58) { return true; }
+            if (line.byteAt(i) == 32) { return false; }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    /** The identifier part of a block-label line. */
+    static #String blockLabelOf(String line) {
+        int32 n = line.byteLength();
+        int32 i = 0;
+        while (i < n) {
+            if (line.byteAt(i) == 58) { return line.substring(0, i); }
+            i = i + 1;
+        }
+        return line.substring(0, n);
+    }
+
+    /** `source_filename = "com/example/Foo.cajeta"` → the quoted path. */
+    static #String sourceFileOf(ArrayList<String> lines) {
+        int32 i = 0;
+        int32 n = lines.count();
+        while (i < n && i < 40) {
+            String l = lines.get(i);
+            if (Text.containsFrom(l, "source_filename = \"", 0)) {
+                return Text.between(l, "source_filename = \"", "\"", 0);
+            }
+            i = i + 1;
+        }
+        return "";
+    }
+
+    static boolean isDefine(String line) { return line.startsWith("define "); }
+
+    static boolean isCondBranch(String line) {
+        return Text.containsFrom(line, "br i1 ", 0);
+    }
+
+    /**
+     * Is this branch a compiler-inserted safety check rather than source-level
+     * control flow?
+     *
+     * Cajeta lowers bounds checks, integer overflow checks, divide/modulo-by-
+     * zero checks and checked casts into `br i1` pairs whose blocks are named
+     * structurally (`bounds_fail`/`bounds_ok`, `ofc.mul.trap`/`ofc.mul.ok`,
+     * `div.trap`/`div.ok`, `cast_fail`/`cast_ok`). The failing arm ends in
+     * `llvm.trap` and is unreachable in any passing run.
+     *
+     * Excluding them is the difference between a branch percentage that means
+     * something and one that can never reach 100% no matter how good the
+     * tests are. gcov and llvm-cov exclude their own compiler-inserted checks
+     * for the same reason. User control flow (`if_*`, `land_*`, `lor_*`, loop
+     * headers) is untouched.
+     */
+    static boolean isGuardBranch(String tgtT, String tgtF) {
+        if (Instrumenter.isGuardLabel(tgtT)) { return true; }
+        return Instrumenter.isGuardLabel(tgtF);
+    }
+
+    static boolean isGuardLabel(String label) {
+        if (label.startsWith("bounds_")) { return true; }
+        if (label.startsWith("ofc."))    { return true; }
+        if (label.startsWith("div."))    { return true; }
+        if (label.startsWith("mod."))    { return true; }
+        if (label.startsWith("cast_"))   { return true; }
+        return false;
+    }
+
+    /** `... @"pkg.Class::method(sig)"(args) {` → `pkg.Class`. */
+    static #String ownerOf(String line) {
+        String sym #= Text.between(line, "@\"", "\"", 0);
+        int64 sep = Text.indexOfFrom(sym, "::", 0);
+        if (sep < 0) { return sym.substring(0, sym.byteLength()); }
+        return sym.substring(0, (int32) sep);
+    }
+
+    /** `... @"pkg.Class::method(sig)"(args) {` → `method(sig)`. */
+    static #String methodOf(String line) {
+        String sym #= Text.between(line, "@\"", "\"", 0);
+        int64 sep = Text.indexOfFrom(sym, "::", 0);
+        if (sep < 0) { return sym.substring(0, sym.byteLength()); }
+        return sym.substring((int32) sep + 2, sym.byteLength());
+    }
+
+    /** The `%cond` operand of a `br i1`. */
+    static #String branchCond(String line) {
+        int64 a = Text.indexOfFrom(line, "br i1 ", 0);
+        if (a < 0) { return ""; }
+        int64 s = a + 6;
+        int64 e = Text.indexOfFrom(line, ", label %", s);
+        if (e < 0) { return ""; }
+        return line.substring((int32) s, (int32) e);
+    }
+
+    /** Target label `which` (0 = true arm, 1 = false arm) of a `br i1`. */
+    static #String branchTarget(String line, int32 which) {
+        int64 at = -1;
+        int64 from = 0;
+        int32 seen = 0;
+        while (seen <= which) {
+            at = Text.indexOfFrom(line, ", label %", from);
+            if (at < 0) { return ""; }
+            from = at + 9;
+            seen = seen + 1;
+        }
+        int64 end = Text.indexOfFrom(line, ",", from);
+        if (end < 0) { end = (int64) line.byteLength(); }
+        return line.substring((int32) from, (int32) end);
+    }
+}

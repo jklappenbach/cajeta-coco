@@ -1,0 +1,42 @@
+package cajeta.coco.model;
+
+import cajeta.lang.String;
+
+/**
+ * What a probe site measures.
+ *
+ * The kinds are deliberately orthogonal so one instrumented run answers every
+ * coverage question at once — a report can compute line, branch, condition and
+ * function percentages from a single profile rather than re-running the suite
+ * per metric.
+ *
+ * - FUNCTION  — the method was entered at least once.
+ * - LINE      — a statement boundary executed (one per `__cajeta_line_mark`).
+ * - BRANCH_T  — a conditional branch took its true arm.
+ * - BRANCH_F  — a conditional branch took its false arm.
+ *
+ * Cajeta lowers `&&` / `||` by short-circuit, giving every LEAF condition its
+ * own conditional branch. So the BRANCH_T/BRANCH_F pair over all branches is
+ * exactly what llvm-cov calls *condition* coverage at leaf level; the report
+ * separates the two by whether a branch belongs to a multi-condition decision.
+ */
+public enum SiteKind {
+    FUNCTION,
+    LINE,
+    BRANCH_T,
+    BRANCH_F;
+
+    public #String toName() {
+        if (this == SiteKind.FUNCTION) { return "function"; }
+        if (this == SiteKind.LINE)     { return "line";     }
+        if (this == SiteKind.BRANCH_T) { return "branch-true";  }
+        return "branch-false";
+    }
+
+    /** True for the two branch-arm kinds. */
+    public boolean isBranch() {
+        if (this == SiteKind.BRANCH_T) { return true; }
+        if (this == SiteKind.BRANCH_F) { return true; }
+        return false;
+    }
+}

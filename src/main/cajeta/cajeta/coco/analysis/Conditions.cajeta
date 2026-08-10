@@ -1,0 +1,267 @@
+package cajeta.coco.analysis;
+
+import cajeta.coco.model.HitProfile;
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteKind;
+import cajeta.coco.util.IntList;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+
+/**
+ * Condition coverage for short-circuit decisions, derived — not probed.
+ *
+ * ## Why no extra instrumentation is needed
+ *
+ * Cajeta lowers `a && b` / `a || b` through short-circuit blocks:
+ *
+ *     entry:       br i1 %a, label %land_rhs, label %land_merge
+ *     land_rhs:    ...compute b...  br label %land_merge
+ *     land_merge:  %d = phi i1 [ %b, %land_rhs ], [ false, %entry ]
+ *                  br i1 %d, ...
+ *
+ * The FIRST condition has its own instrumented branch pair, but `b` never
+ * branches — its value flows into the phi. Its outcomes are nevertheless
+ * fully determined by edges coco already counts:
+ *
+ *   AND:  b evaluated  = count(entry -> land_rhs)   (the true arm)
+ *         b true       = count(merge branch true)    (only both-true gets there)
+ *         b false      = evaluated - b true
+ *   OR:   b evaluated  = count(entry -> lor_rhs)    (the false arm)
+ *         b false      = count(merge branch false)
+ *         b true       = evaluated - b false
+ *
+ * Chains (`a || b || c || d`) nest left-associatively: each merge block
+ * branches into the next hop's rhs, so the same two rules applied hop by hop
+ * decompose every leaf. Mixed `&&`/`||` chains work because each hop is
+ * classified by its own block names.
+ *
+ * ## The honest limit
+ *
+ * When a decision's value is CONSUMED rather than branched on (`return a || b;`
+ * — cajeta-logging's `needsQuote` does exactly this), the final merge has no
+ * branch pair and the last condition's outcome split is underdetermined. Those
+ * leaves are reported as evaluated-but-underived and are excluded from the
+ * covered/total metric — never guessed.
+ *
+ * This module reports leaf conditions of MULTI-condition decisions only; a
+ * single-condition `if` is already exactly the branch-coverage metric.
+ */
+public class Conditions {
+    /** Parallel rows, one per leaf condition of a short-circuit decision. */
+    ArrayList<String> files;
+    ArrayList<String> methods;
+    IntList lines;
+    IntList ordinal;     // 1-based position within the decision chain
+    IntList tCount;      // -1 when underivable (value-consumed tail)
+    IntList fCount;      // -1 when underivable
+    IntList evaluated;
+
+    Conditions(int32 cap) {
+        this.files #= heap ArrayList<String>();
+        this.methods #= heap ArrayList<String>();
+        this.lines #= heap IntList(cap);
+        this.ordinal #= heap IntList(cap);
+        this.tCount #= heap IntList(cap);
+        this.fCount #= heap IntList(cap);
+        this.evaluated #= heap IntList(cap);
+    }
+
+    public int32 count() { return this.lines.count(); }
+    public String fileAt(int32 i)   { return this.files.get(i); }
+    public String methodAt(int32 i) { return this.methods.get(i); }
+    public int64 lineAt(int32 i)    { return this.lines.get(i); }
+    public int64 ordinalAt(int32 i) { return this.ordinal.get(i); }
+    public int64 trueAt(int32 i)    { return this.tCount.get(i); }
+    public int64 falseAt(int32 i)   { return this.fCount.get(i); }
+    public int64 evalAt(int32 i)    { return this.evaluated.get(i); }
+
+    public boolean derivableAt(int32 i) { return this.tCount.get(i) >= 0; }
+
+    /** Both outcomes observed. */
+    public boolean coveredAt(int32 i) {
+        if (this.tCount.get(i) <= 0) { return false; }
+        return this.fCount.get(i) > 0;
+    }
+
+    /** Derivable leaves — the metric's denominator. */
+    public int64 totalDerivable() {
+        int64 n = 0;
+        int32 i = 0;
+        while (i < this.count()) {
+            if (this.derivableAt(i)) { n = n + 1; }
+            i = i + 1;
+        }
+        return n;
+    }
+
+    public int64 totalCovered() {
+        int64 n = 0;
+        int32 i = 0;
+        while (i < this.count()) {
+            if (this.coveredAt(i)) { n = n + 1; }
+            i = i + 1;
+        }
+        return n;
+    }
+
+    /**
+     * Decompose every short-circuit chain in the site table.
+     *
+     * Chains are walked from their HEAD — a branch pair whose block is not
+     * itself a merge block. Hop pairs (block named `land_merge*`/`lor_merge*`)
+     * are only ever visited through the chain walk, so nothing is
+     * double-counted.
+     */
+    public static #Conditions analyze(ArrayList<Site> sites, HitProfile profile) {
+        Conditions out #= heap Conditions(sites.count());
+
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site st = sites.get(i);
+            if (st.getKind() == SiteKind.BRANCH_T
+                && Conditions.isMergeBlock(st.getBlock()) == false) {
+                // A head pair: does it start a short-circuit chain?
+                int32 fi = Conditions.twinIndexOf(sites, i);
+                if (fi >= 0) {
+                    Site fTwin = sites.get(fi);
+                    boolean isAnd = st.getTarget().startsWith("land_rhs");
+                    boolean isOr = fTwin.getTarget().startsWith("lor_rhs");
+                    if (isAnd || isOr) {
+                        Conditions.walkChain(sites, profile, i, fi, out);
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /**
+     * Walk one chain from its head, emitting the head leaf and deriving each
+     * subsequent leaf from the next merge's branch pair.
+     */
+    static void walkChain(ArrayList<Site> sites, HitProfile profile,
+                          int32 headTi, int32 headFi, Conditions out) {
+        Site headT = sites.get(headTi);
+        Site headF = sites.get(headFi);
+        String file = headT.getFile();
+        String method = headT.getMethod();
+        int64 line = headT.getLine();
+
+        // Leaf 1: the head condition's own probes are exact.
+        int64 curT = profile.countOf(headT.getId());
+        int64 curF = profile.countOf(headF.getId());
+        out.add(file, method, line, 1, curT, curF, curT + curF);
+
+        Site pT = headT;
+        Site pF = headF;
+        int64 k = 2;
+        boolean going = true;
+        while (going) {
+            going = false;
+            boolean isAnd = pT.getTarget().startsWith("land_rhs");
+
+            // The merge this hop lands in, and the count entering the rhs.
+            String merge #= "";
+            int64 evaluated = 0;
+            if (isAnd) {
+                merge #= pF.getTarget().substring(0, pF.getTarget().byteLength());
+                evaluated = profile.countOf(pT.getId());
+            } else {
+                merge #= pT.getTarget().substring(0, pT.getTarget().byteLength());
+                evaluated = profile.countOf(pF.getId());
+            }
+
+            int32 qi = Conditions.pairInBlock(sites, file, method, merge);
+            int32 qfi = -1;
+            if (qi >= 0) { qfi = Conditions.twinIndexOf(sites, qi); }
+            if (qi < 0 || qfi < 0) {
+                // Value-consumed decision: the merge never branches. The tail
+                // leaf's split is underdetermined — recorded, not guessed.
+                out.add(file, method, line, k, -1, -1, evaluated);
+            } else {
+                Site qT = sites.get(qi);
+                Site qF = sites.get(qfi);
+                int64 rhsT = 0;
+                int64 rhsF = 0;
+                if (isAnd) {
+                    rhsT = profile.countOf(qT.getId());
+                    rhsF = evaluated - rhsT;
+                } else {
+                    rhsF = profile.countOf(qF.getId());
+                    rhsT = evaluated - rhsF;
+                }
+                // Anchor the derived leaf to the merge branch's own line —
+                // in a chain wrapped across source lines the head's line
+                // would misplace later conditions.
+                int64 leafLine = qT.getLine();
+                if (leafLine == 0) { leafLine = line; }
+                out.add(file, method, leafLine, k, rhsT, rhsF, evaluated);
+
+                // Chain continues if the merge's own branch is another hop.
+                boolean nextAnd = qT.getTarget().startsWith("land_rhs");
+                boolean nextOr = qF.getTarget().startsWith("lor_rhs");
+                if (nextAnd || nextOr) {
+                    pT = qT;
+                    pF = qF;
+                    k = k + 1;
+                    going = true;
+                }
+            }
+        }
+    }
+
+    void add(String file, String method, int64 line, int64 ord,
+             int64 t, int64 f, int64 ev) {
+        this.files.add(file.substring(0, file.byteLength()));
+        this.methods.add(method.substring(0, method.byteLength()));
+        this.lines.add(line);
+        this.ordinal.add(ord);
+        this.tCount.add(t);
+        this.fCount.add(f);
+        this.evaluated.add(ev);
+    }
+
+    /**
+     * Index of the BRANCH_F twin of the BRANCH_T at `ti` (same function and
+     * block), or -1. Returns an index rather than the Site: a multi-parameter
+     * free function cannot return a borrow (CAJETA_ERROR_BORROW_RETURN_MULTI_PARAM).
+     */
+    static int32 twinIndexOf(ArrayList<Site> sites, int32 ti) {
+        Site t = sites.get(ti);
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site s = sites.get(i);
+            if (s.getKind() == SiteKind.BRANCH_F
+                && s.getFile().equals(t.getFile())
+                && s.getMethod().equals(t.getMethod())
+                && s.getBlock().equals(t.getBlock())) {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    /** Index of the BRANCH_T site living in `block` of this function, or -1. */
+    static int32 pairInBlock(ArrayList<Site> sites, String file, String method,
+                             String block) {
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site s = sites.get(i);
+            if (s.getKind() == SiteKind.BRANCH_T
+                && s.getFile().equals(file)
+                && s.getMethod().equals(method)
+                && s.getBlock().equals(block)) {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    static boolean isMergeBlock(String block) {
+        if (block.startsWith("land_merge")) { return true; }
+        return block.startsWith("lor_merge");
+    }
+}

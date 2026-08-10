@@ -1,0 +1,148 @@
+package cajeta.coco.model;
+
+import cajeta.coco.util.Text;
+import cajeta.lang.StringBuilder;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+
+/**
+ * Hit counts from one instrumented run, indexed by probe id.
+ *
+ * Profiles are additive: a suite that runs its tests as separate processes
+ * produces one profile each, and `merge` folds them into the total. Keeping
+ * them separate until merge time is what makes per-test attribution possible —
+ * the same profiles that sum to the overall number also answer "which test
+ * reached this line", with no second instrumented run.
+ */
+public class HitProfile {
+    int64[] counts;
+    int64 capacity;
+    /** Free-text label — the test name, for attribution. */
+    String label;
+
+    public HitProfile(int64 size, #String label) {
+        int64 n = size;
+        if (n < 0) { n = 0; }
+        this.counts #= heap int64[n];
+        this.capacity = n;
+        this.label #= label;
+        int64 i = 0;
+        while (i < n) {
+            this.counts[i] = 0;
+            i = i + 1;
+        }
+    }
+
+    public int64 size()   { return this.capacity; }
+    public String getLabel() { return this.label; }
+
+    public int64 countOf(int64 id) {
+        if (id < 0) { return 0; }
+        if (id >= this.capacity) { return 0; }
+        return this.counts[id];
+    }
+
+    public boolean covered(int64 id) { return this.countOf(id) > 0; }
+
+    public void addTo(int64 id, int64 c) {
+        if (id < 0) { return; }
+        if (id >= this.capacity) { return; }
+        this.counts[id] = this.counts[id] + c;
+    }
+
+    /** Fold `other` into this profile. */
+    public void merge(HitProfile other) {
+        int64 i = 0;
+        int64 n = other.size();
+        while (i < n) {
+            this.addTo(i, other.countOf(i));
+            i = i + 1;
+        }
+    }
+
+    /** Number of probes with at least one hit. */
+    public int64 hitCount() {
+        int64 i = 0;
+        int64 hits = 0;
+        while (i < this.capacity) {
+            if (this.counts[i] > 0) { hits = hits + 1; }
+            i = i + 1;
+        }
+        return hits;
+    }
+
+    /** The `test <name>` label inside a per-test dump, or empty. */
+    public static #String labelOf(String text) {
+        ArrayList<String> lines #= Text.splitLines(text);
+        int32 i = 0;
+        while (i < lines.count()) {
+            String l = lines.get(i);
+            if (l.startsWith("test ")) {
+                return l.substring(5, l.byteLength());
+            }
+            i = i + 1;
+        }
+        return "";
+    }
+
+    /** Serialize back to `coco-profile v1` (no test label — merged output). */
+    public #String encode() {
+        StringBuilder sb #= heap StringBuilder();
+        sb.append("coco-profile v1\nsize ");
+        sb.append(Text.fromInt(this.capacity));
+        sb.append("\n");
+        int64 i = 0;
+        while (i < this.capacity) {
+            int64 c = this.counts[i];
+            if (c != 0) {
+                sb.append(Text.fromInt(i));
+                sb.append(" ");
+                sb.append(Text.fromInt(c));
+                sb.append("\n");
+            }
+            i = i + 1;
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Parse the `coco-profile v1` format the runtime writes.
+     *
+     * The header's `size` establishes the table width even when every counter
+     * that follows is zero-suppressed, so a run that touched nothing still
+     * reports the right denominator.
+     */
+    public static #HitProfile decode(String text, #String label) {
+        ArrayList<String> lines #= Text.splitLines(text);
+        int64 size = 0;
+        int32 i = 0;
+        while (i < lines.count()) {
+            String l = lines.get(i);
+            if (l.startsWith("size ")) {
+                size = Text.parseIntAt(l, 5);
+                i = lines.count();
+            } else {
+                i = i + 1;
+            }
+        }
+
+        HitProfile p #= heap HitProfile(size, #label);
+        int32 k = 0;
+        while (k < lines.count()) {
+            String l = lines.get(k);
+            if (l.byteLength() > 0
+                && l.startsWith("coco-profile") == false
+                && l.startsWith("test ") == false
+                && l.startsWith("size ") == false) {
+                int64 sp = Text.indexOfFrom(l, " ", 0);
+                if (sp > 0) {
+                    int64 id = Text.parseIntAt(l, 0);
+                    int64 c = Text.parseIntAt(l, sp + 1);
+                    p.addTo(id, c);
+                }
+            }
+            k = k + 1;
+        }
+        return #p;
+    }
+}

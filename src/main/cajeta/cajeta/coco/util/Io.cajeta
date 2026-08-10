@@ -1,0 +1,88 @@
+package cajeta.coco.util;
+
+import cajeta.io.file.File;
+import cajeta.io.file.FileReader;
+import cajeta.io.file.FileWriter;
+import cajeta.io.file.OpenMode;
+import cajeta.lang.String;
+
+/**
+ * Whole-file text IO.
+ *
+ * `cajeta.io.file` exposes streaming handles and a byte-array one-shot, but no
+ * "read this text file into a String" call, and `String` has no `fromBytes`
+ * yet. `FileReader.readString(maxBytes)` is the one bridge from disk to text,
+ * so everything funnels through it here rather than being re-derived at each
+ * call site.
+ *
+ * The readers and writers have no drop-close in v1, so every path closes
+ * explicitly.
+ */
+public class Io {
+
+    /**
+     * Copy `s` into a NUL-terminated buffer.
+     *
+     * The runtime's `__cajeta_file_open` takes `const char*` and trusts NUL
+     * termination, but the compiler's intrinsic lowering hands it a String's
+     * raw byte pointer — and cajeta Strings are NOT NUL-terminated. Literal
+     * paths work because literals are NUL-terminated constants; builder-built
+     * paths work only while fresh zeroed pages happen to follow the buffer,
+     * and break with poison-filled recycled memory (observed: paths reaching
+     * openat(2) with the tail of a previous longer path plus 0xA1 appended).
+     * Every path that goes near the filesystem funnels through here.
+     */
+    static #String cstr(String s) {
+        int32 n = s.byteLength();
+        int8[] buf #= heap int8[n + 1];
+        int32 i = 0;
+        while (i < n) {
+            buf[i] = s.byteAt(i);
+            i = i + 1;
+        }
+        buf[n] = 0;
+        return heap String(#buf, n);
+    }
+
+    /**
+     * Upper bound for a single read. Instrumentation runs over per-class IR
+     * modules — tens of kilobytes each, a few megabytes at the very worst — so
+     * a 64 MB ceiling is far beyond any real input while still bounding a
+     * runaway read.
+     */
+    public static int32 maxRead() { return 67108864; }
+
+    /** Read `path` as UTF-8 text. Returns empty when the file cannot be read. */
+    public static #String readAll(String path) {
+        String p #= Io.cstr(path);
+        FileReader r = File.openRead(p);
+        if (r == null) { return ""; }
+        String s #= r.readString(Io.maxRead());
+        r.close();
+        return #s;
+    }
+
+    /** Write `text` to `path`, truncating any existing content. */
+    public static void writeAll(String path, String text) {
+        String p #= Io.cstr(path);
+        FileWriter w = File.openWrite(p, OpenMode.WRITE);
+        if (w == null) { return; }
+        w.writeString(text);
+        w.flush();
+        w.close();
+    }
+
+    /**
+     * Append `text` to `path`, creating it when absent. Used to accumulate one
+     * probe map across a whole project's modules, which are instrumented one
+     * subprocess at a time.
+     */
+    public static void appendAll(String path, String text) {
+        String p #= Io.cstr(path);
+        FileWriter w = File.openWrite(p, OpenMode.APPEND);
+        if (w == null) { return; }
+        w.writeString(text);
+        w.flush();
+        w.close();
+    }
+}

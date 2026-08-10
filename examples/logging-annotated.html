@@ -1,0 +1,1078 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>cajeta-coco annotated source</title><style>
+:root{--surface:#fcfcfb;--panel:#ffffff;--ink:#0b0b0b;--ink2:#52514e;--line:#e4e3df;--good:#0ca30c;--warn:#fab219;--bad:#d03b3b;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--surface:#1a1a19;--panel:#232322;--ink:#f2f1ee;--ink2:#a8a6a1;--line:#383835;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink);font:14px/1.5 ui-sans-serif,system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:32px 20px 64px}
+h1{font-size:22px;margin:0 0 4px}h3{margin:0 0 2px;font-size:15px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.sub,.muted{color:var(--ink2)}.sub{margin:0 0 20px}
+.idx{margin:0 0 8px;padding-left:20px}.idx li{margin:2px 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin:14px 0}
+.srcwrap{overflow-x:auto;margin-top:10px}
+pre.src{margin:0;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}
+.row{display:block;padding:0 6px;border-radius:3px}
+.row.no{background:rgba(208,59,59,.14)}
+.row.pt{background:rgba(250,178,25,.16)}
+.ln{display:inline-block;width:44px;text-align:right;color:var(--ink2);user-select:none;padding-right:10px}
+.cnt{display:inline-block;width:44px;text-align:right;color:var(--good);user-select:none;padding-right:12px;font-size:11px}
+.row.no .cnt,.row.pt .cnt{color:var(--ink2)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+a{color:inherit}
+</style></head><body><main>
+<h1>Annotated source</h1><p class="sub">uncovered lines tinted; hit counts in the gutter</p><ul class="idx"><li><a href="#f-dev-cajeta-logging-CapturingAppender-cajeta"><code>dev/cajeta/logging/CapturingAppender.cajeta</code></a> <span class="muted">83.3% lines</span></li><li><a href="#f-dev-cajeta-logging-CompositeAppender-cajeta"><code>dev/cajeta/logging/CompositeAppender.cajeta</code></a> <span class="muted">100.0% lines</span></li><li><a href="#f-dev-cajeta-logging-ConsoleAppender-cajeta"><code>dev/cajeta/logging/ConsoleAppender.cajeta</code></a> <span class="muted">0.0% lines</span></li><li><a href="#f-dev-cajeta-logging-FileAppender-cajeta"><code>dev/cajeta/logging/FileAppender.cajeta</code></a> <span class="muted">75.0% lines</span></li><li><a href="#f-dev-cajeta-logging-JsonlEncoder-cajeta"><code>dev/cajeta/logging/JsonlEncoder.cajeta</code></a> <span class="muted">92.8% lines</span></li><li><a href="#f-dev-cajeta-logging-Levels-cajeta"><code>dev/cajeta/logging/Levels.cajeta</code></a> <span class="muted">50.0% lines</span></li><li><a href="#f-dev-cajeta-logging-LogField-cajeta"><code>dev/cajeta/logging/LogField.cajeta</code></a> <span class="muted">100.0% lines</span></li><li><a href="#f-dev-cajeta-logging-LogfmtEncoder-cajeta"><code>dev/cajeta/logging/LogfmtEncoder.cajeta</code></a> <span class="muted">100.0% lines</span></li><li><a href="#f-dev-cajeta-logging-LogFmt-cajeta"><code>dev/cajeta/logging/LogFmt.cajeta</code></a> <span class="muted">94.4% lines</span></li><li><a href="#f-dev-cajeta-logging-LoggerFactory-cajeta"><code>dev/cajeta/logging/LoggerFactory.cajeta</code></a> <span class="muted">50.0% lines</span></li><li><a href="#f-dev-cajeta-logging-Logger-cajeta"><code>dev/cajeta/logging/Logger.cajeta</code></a> <span class="muted">87.5% lines</span></li><li><a href="#f-dev-cajeta-logging-Log-cajeta"><code>dev/cajeta/logging/Log.cajeta</code></a> <span class="muted">0.0% lines</span></li><li><a href="#f-dev-cajeta-logging-LogRecord-cajeta"><code>dev/cajeta/logging/LogRecord.cajeta</code></a> <span class="muted">80.9% lines</span></li><li><a href="#f-dev-cajeta-logging-selftest-AppenderTest-cajeta"><code>dev/cajeta/logging/selftest/AppenderTest.cajeta</code></a> <span class="muted">100.0% lines</span></li><li><a href="#f-dev-cajeta-logging-selftest-DiLoggingTest-cajeta"><code>dev/cajeta/logging/selftest/DiLoggingTest.cajeta</code></a> <span class="muted">100.0% lines</span></li><li><a href="#f-dev-cajeta-logging-selftest-EncoderTest-cajeta"><code>dev/cajeta/logging/selftest/EncoderTest.cajeta</code></a> <span class="muted">100.0% lines</span></li><li><a href="#f-dev-cajeta-logging-selftest-LoggedAnnotationTest-cajeta"><code>dev/cajeta/logging/selftest/LoggedAnnotationTest.cajeta</code></a> <span class="muted">100.0% lines</span></li><li><a href="#f-dev-cajeta-logging-selftest-LoggedReflectionDiscoveryTest-cajeta"><code>dev/cajeta/logging/selftest/LoggedReflectionDiscoveryTest.cajeta</code></a> <span class="muted">100.0% lines</span></li><li><a href="#f-dev-cajeta-logging-selftest-LoggingTest-cajeta"><code>dev/cajeta/logging/selftest/LoggingTest.cajeta</code></a> <span class="muted">100.0% lines</span></li><li><a href="#f-dev-cajeta-logging-selftest-TestMain-cajeta"><code>dev/cajeta/logging/selftest/TestMain.cajeta</code></a> <span class="muted">100.0% lines</span></li><li><a href="#f-dev-cajeta-logging-TextEncoder-cajeta"><code>dev/cajeta/logging/TextEncoder.cajeta</code></a> <span class="muted">100.0% lines</span></li></ul>
+<div class="card" id="f-dev-cajeta-logging-CapturingAppender-cajeta"><h3>dev/cajeta/logging/CapturingAppender.cajeta</h3><div class="muted">83.3% lines &middot; 16.6% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import cajeta.collection.ArrayList;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>import cajeta.lang.String;
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * Test sink: keeps each encoded line as a String for assertions. As a
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> * `@TestComponent` it masks the real `Appender` under `--profile=test`, so a
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> * DI-wired logger writes here and the test reads the captured lines back. Also
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * usable explicitly (`heap CapturingAppender()`) outside DI.
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span>@TestComponent
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span>public final class CapturingAppender implements Appender {
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span>    public ArrayList&lt;String&gt; lines;
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>    public CapturingAppender() {
+</span><span class="row no"><span class="ln">17</span><span class="cnt"></span>        this.lines = heap ArrayList&lt;String&gt;();
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>    public void append(#int8[] line) {
+</span><span class="row ok"><span class="ln">21</span><span class="cnt">5&times;</span>        int32 n = (int32) line.count();
+</span><span class="row ok"><span class="ln">22</span><span class="cnt">5&times;</span>        String s = heap String(#line, n);
+</span><span class="row ok"><span class="ln">23</span><span class="cnt">5&times;</span>        this.lines.add(#s);
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">25</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">26</span><span class="cnt"></span>    public int32 count() {
+</span><span class="row ok"><span class="ln">27</span><span class="cnt">15&times;</span>        return this.lines.count();
+</span><span class="row "><span class="ln">28</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">29</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">30</span><span class="cnt"></span>    public String get(int32 i) {
+</span><span class="row ok"><span class="ln">31</span><span class="cnt">3&times;</span>        return this.lines.get(i);
+</span><span class="row "><span class="ln">32</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">33</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-CompositeAppender-cajeta"><h3>dev/cajeta/logging/CompositeAppender.cajeta</h3><div class="muted">100.0% lines &middot; 83.3% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import cajeta.collection.ArrayList;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> * Fans one encoded line out to several appenders — the common &quot;log to console
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * AND a file&quot; shape. Because `Appender.append` takes OWNERSHIP of the line
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> * bytes (`#int8[]`), the composite hands each child its own copy.
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> *
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * ```cajeta
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * CompositeAppender out = heap CompositeAppender();
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> * out.add(#heap ConsoleAppender()).add(#heap FileAppender(path, OpenMode.APPEND));
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> * Logger log = heap Logger(&quot;svc&quot;, Level.INFO, heap JsonlEncoder(), #out);
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span> * ```
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>public final class CompositeAppender implements Appender {
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span>    ArrayList&lt;Appender&gt; appenders;
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span>    public CompositeAppender() {
+</span><span class="row pt"><span class="ln">20</span><span class="cnt">1&times;</span>        this.appenders = heap ArrayList&lt;Appender&gt;();
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>    /** Add a child sink; returns this for chaining. Takes ownership of `a`. */
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>    public CompositeAppender add(#Appender a) {
+</span><span class="row ok"><span class="ln">25</span><span class="cnt">2&times;</span>        this.appenders.add(#a);
+</span><span class="row ok"><span class="ln">26</span><span class="cnt">2&times;</span>        return this;
+</span><span class="row "><span class="ln">27</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">28</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">29</span><span class="cnt"></span>    public void append(#int8[] line) {
+</span><span class="row ok"><span class="ln">30</span><span class="cnt">1&times;</span>        int32 len = (int32) line.count();
+</span><span class="row ok"><span class="ln">31</span><span class="cnt">1&times;</span>        int32 n = this.appenders.count();
+</span><span class="row ok"><span class="ln">32</span><span class="cnt">1&times;</span>        int32 i = 0;
+</span><span class="row ok"><span class="ln">33</span><span class="cnt">1&times;</span>        while (i &lt; n) {
+</span><span class="row ok"><span class="ln">34</span><span class="cnt">2&times;</span>            Appender a = this.appenders.get(i);
+</span><span class="row ok"><span class="ln">35</span><span class="cnt">2&times;</span>            int8[] copy = heap int8[len];
+</span><span class="row ok"><span class="ln">36</span><span class="cnt">2&times;</span>            int32 j = 0;
+</span><span class="row ok"><span class="ln">37</span><span class="cnt">2&times;</span>            while (j &lt; len) {
+</span><span class="row ok"><span class="ln">38</span><span class="cnt">126&times;</span>                copy[j] = line[j];
+</span><span class="row ok"><span class="ln">39</span><span class="cnt">126&times;</span>                j = j + 1;
+</span><span class="row "><span class="ln">40</span><span class="cnt"></span>            }
+</span><span class="row ok"><span class="ln">41</span><span class="cnt">2&times;</span>            a.append(#copy);
+</span><span class="row ok"><span class="ln">42</span><span class="cnt">2&times;</span>            i = i + 1;
+</span><span class="row "><span class="ln">43</span><span class="cnt"></span>        }
+</span><span class="row "><span class="ln">44</span><span class="cnt"></span>        // `line` (owned) drops here.
+</span><span class="row "><span class="ln">45</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">46</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-ConsoleAppender-cajeta"><h3>dev/cajeta/logging/ConsoleAppender.cajeta</h3><div class="muted">0.0% lines &middot; 100.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import cajeta.lang.String;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> * Writes each encoded line to stdout via `println` (which supplies the newline).
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * A TTY-gated colorized variant is a Phase-3 concern; this is the plain sink.
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> * The `Appender` under `--profile=dev` (human-readable text to the console).
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span>@Component @Profile(&quot;dev&quot;)
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span>public final class ConsoleAppender implements Appender {
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span>    public ConsoleAppender() {
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>    public void append(#int8[] line) {
+</span><span class="row no"><span class="ln">17</span><span class="cnt"></span>        int32 n = (int32) line.count();
+</span><span class="row no"><span class="ln">18</span><span class="cnt"></span>        String s = heap String(#line, n);
+</span><span class="row no"><span class="ln">19</span><span class="cnt"></span>        System.stdout.println(s);
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-FileAppender-cajeta"><h3>dev/cajeta/logging/FileAppender.cajeta</h3><div class="muted">75.0% lines &middot; 25.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import cajeta.io.file.File;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>import cajeta.io.file.FileWriter;
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>import cajeta.io.file.OpenMode;
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span>import cajeta.lang.String;
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> * Writes each encoded line (plus a trailing newline) to a file through a
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * streaming `FileWriter`. Open with `OpenMode.APPEND` for a normal service log
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * (preserves existing content across restarts); `OpenMode.WRITE` truncates on
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> * open. Flushes per line for durability — a buffered / worker-fiber variant is
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> * a later pass (`AsyncAppender`, Phase 3). Call `close()` to release the fd.
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span> *
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span> * ```cajeta
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span> * FileAppender out = heap FileAppender(&quot;/var/log/app.jsonl&quot;, OpenMode.APPEND);
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span> * Logger log = heap Logger(&quot;svc&quot;, Level.INFO, heap JsonlEncoder(), #out);
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span> * ```
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>@Component @Profile(&quot;prod&quot;)
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>public final class FileAppender implements Appender {
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>    FileWriter writer;
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>    public FileAppender(String path, OpenMode mode) {
+</span><span class="row pt"><span class="ln">25</span><span class="cnt">4&times;</span>        this.writer = File.openWrite(path, mode);
+</span><span class="row "><span class="ln">26</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">27</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">28</span><span class="cnt"></span>    // No-arg ctor for DI: the `Appender` under `--profile=prod`, appending
+</span><span class="row "><span class="ln">29</span><span class="cnt"></span>    // JSONL to a default `app.jsonl`. A configurable path / rolling policy is a
+</span><span class="row "><span class="ln">30</span><span class="cnt"></span>    // follow-up (see plan/logging-plan.md).
+</span><span class="row "><span class="ln">31</span><span class="cnt"></span>    public FileAppender() {
+</span><span class="row no"><span class="ln">32</span><span class="cnt"></span>        this.writer = File.openWrite(&quot;app.jsonl&quot;, OpenMode.APPEND);
+</span><span class="row "><span class="ln">33</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">34</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">35</span><span class="cnt"></span>    public void append(#int8[] line) {
+</span><span class="row ok"><span class="ln">36</span><span class="cnt">5&times;</span>        int32 n = (int32) line.count();
+</span><span class="row ok"><span class="ln">37</span><span class="cnt">5&times;</span>        String s = heap String(#line, n);
+</span><span class="row ok"><span class="ln">38</span><span class="cnt">5&times;</span>        this.writer.writeString(s);
+</span><span class="row ok"><span class="ln">39</span><span class="cnt">5&times;</span>        this.writer.writeString(&quot;\n&quot;);
+</span><span class="row ok"><span class="ln">40</span><span class="cnt">5&times;</span>        this.writer.flush();
+</span><span class="row "><span class="ln">41</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">42</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">43</span><span class="cnt"></span>    /** Flush and release the underlying file descriptor. */
+</span><span class="row "><span class="ln">44</span><span class="cnt"></span>    public void close() {
+</span><span class="row no"><span class="ln">45</span><span class="cnt"></span>        this.writer.close();
+</span><span class="row "><span class="ln">46</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">47</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-JsonlEncoder-cajeta"><h3>dev/cajeta/logging/JsonlEncoder.cajeta</h3><div class="muted">92.8% lines &middot; 50.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import cajeta.codec.json.JsonWriter;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> * Default encoder: one compact JSON object per record (JSON Lines). Reserved
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * keys (`ts`, `level`, `logger`, `msg`) are written first, then the structured
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> * fields in insertion order. No trailing newline — the appender adds it.
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> *
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * The default `LogEncoder` under the `prod` and `test` profiles (structured
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * output for services and for test assertions).
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span>@Component @Profile({&quot;prod&quot;, &quot;test&quot;})
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span>public final class JsonlEncoder implements LogEncoder {
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>    public JsonlEncoder() {
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span>    public #int8[] encode(LogRecord r) {
+</span><span class="row ok"><span class="ln">20</span><span class="cnt">9&times;</span>        JsonWriter w = heap JsonWriter();
+</span><span class="row pt"><span class="ln">21</span><span class="cnt">9&times;</span>        w.beginObject()
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>         .key(&quot;ts&quot;).writeNumber(r.ts)
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>         .key(&quot;level&quot;).writeString(Levels.name(r.level))
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>         .key(&quot;logger&quot;).writeString(r.logger)
+</span><span class="row "><span class="ln">25</span><span class="cnt"></span>         .key(&quot;msg&quot;).writeString(r.msg);
+</span><span class="row "><span class="ln">26</span><span class="cnt"></span>
+</span><span class="row ok"><span class="ln">27</span><span class="cnt">9&times;</span>        int32 i = 0;
+</span><span class="row ok"><span class="ln">28</span><span class="cnt">9&times;</span>        int32 n = r.fields.count();
+</span><span class="row ok"><span class="ln">29</span><span class="cnt">9&times;</span>        while (i &lt; n) {
+</span><span class="row ok"><span class="ln">30</span><span class="cnt">3&times;</span>            LogField f = r.fields.get(i);
+</span><span class="row ok"><span class="ln">31</span><span class="cnt">3&times;</span>            if (f.kind == 0) {
+</span><span class="row pt"><span class="ln">32</span><span class="cnt">1&times;</span>                w.key(f.key).writeString(f.sval);
+</span><span class="row "><span class="ln">33</span><span class="cnt"></span>            } else if (f.kind == 1) {
+</span><span class="row pt"><span class="ln">34</span><span class="cnt">1&times;</span>                w.key(f.key).writeNumber(f.ival);
+</span><span class="row "><span class="ln">35</span><span class="cnt"></span>            } else if (f.kind == 2) {
+</span><span class="row pt"><span class="ln">36</span><span class="cnt">1&times;</span>                w.key(f.key).writeBoolean(f.bval);
+</span><span class="row "><span class="ln">37</span><span class="cnt"></span>            } else {
+</span><span class="row no"><span class="ln">38</span><span class="cnt"></span>                w.key(f.key).writeNumber(f.fval);
+</span><span class="row "><span class="ln">39</span><span class="cnt"></span>            }
+</span><span class="row ok"><span class="ln">40</span><span class="cnt">3&times;</span>            i = i + 1;
+</span><span class="row "><span class="ln">41</span><span class="cnt"></span>        }
+</span><span class="row "><span class="ln">42</span><span class="cnt"></span>
+</span><span class="row pt"><span class="ln">43</span><span class="cnt">9&times;</span>        w.endObject();
+</span><span class="row ok"><span class="ln">44</span><span class="cnt">9&times;</span>        return w.toBytes();
+</span><span class="row "><span class="ln">45</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">46</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-Levels-cajeta"><h3>dev/cajeta/logging/Levels.cajeta</h3><div class="muted">50.0% lines &middot; 55.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span> * Helpers over `Level`. cajeta enums are bare (no methods), so severity ranking
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span> * and display names live here as static functions keyed off `==` comparison.
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span>public final class Levels {
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span>    /** Severity rank — higher is more severe. Used for threshold gating. */
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span>    public static int32 severity(Level l) {
+</span><span class="row pt"><span class="ln">11</span><span class="cnt">48&times;</span>        if (l == Level.TRACE) {
+</span><span class="row no"><span class="ln">12</span><span class="cnt"></span>            return 0;
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span>        } else if (l == Level.DEBUG) {
+</span><span class="row ok"><span class="ln">14</span><span class="cnt">2&times;</span>            return 1;
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span>        } else if (l == Level.INFO) {
+</span><span class="row pt"><span class="ln">16</span><span class="cnt">29&times;</span>            return 2;
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span>        } else if (l == Level.WARN) {
+</span><span class="row ok"><span class="ln">18</span><span class="cnt">17&times;</span>            return 3;
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span>        } else if (l == Level.ERROR) {
+</span><span class="row no"><span class="ln">20</span><span class="cnt"></span>            return 4;
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>        }
+</span><span class="row no"><span class="ln">22</span><span class="cnt"></span>        return 5; // OFF
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">25</span><span class="cnt"></span>    /** Uppercase display name for encoders. */
+</span><span class="row "><span class="ln">26</span><span class="cnt"></span>    public static String name(Level l) {
+</span><span class="row pt"><span class="ln">27</span><span class="cnt">14&times;</span>        if (l == Level.TRACE) {
+</span><span class="row no"><span class="ln">28</span><span class="cnt"></span>            return &quot;TRACE&quot;;
+</span><span class="row "><span class="ln">29</span><span class="cnt"></span>        } else if (l == Level.DEBUG) {
+</span><span class="row no"><span class="ln">30</span><span class="cnt"></span>            return &quot;DEBUG&quot;;
+</span><span class="row "><span class="ln">31</span><span class="cnt"></span>        } else if (l == Level.INFO) {
+</span><span class="row pt"><span class="ln">32</span><span class="cnt">7&times;</span>            return &quot;INFO&quot;;
+</span><span class="row "><span class="ln">33</span><span class="cnt"></span>        } else if (l == Level.WARN) {
+</span><span class="row ok"><span class="ln">34</span><span class="cnt">7&times;</span>            return &quot;WARN&quot;;
+</span><span class="row "><span class="ln">35</span><span class="cnt"></span>        } else if (l == Level.ERROR) {
+</span><span class="row no"><span class="ln">36</span><span class="cnt"></span>            return &quot;ERROR&quot;;
+</span><span class="row "><span class="ln">37</span><span class="cnt"></span>        }
+</span><span class="row no"><span class="ln">38</span><span class="cnt"></span>        return &quot;OFF&quot;;
+</span><span class="row "><span class="ln">39</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">40</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-LogField-cajeta"><h3>dev/cajeta/logging/LogField.cajeta</h3><div class="muted">100.0% lines &middot; 50.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span> * One structured key/value pair on a `LogRecord`. A lightweight tagged value
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span> * (not a `JsonValue`) so building a field is alloc-light and every encoder
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> * renders it by switching on `kind` — the design the logging spec's acceptance
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * criterion #1 (alloc-free below threshold) calls for.
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> *
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> * `kind`: 0 = string, 1 = int64, 2 = boolean, 3 = float64.
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * The unused payload slots are left at their zero/empty defaults — `sval` is
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * always a real (possibly empty) String, never null, so the drop chain stays sound.
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span>public final class LogField {
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span>    public String key;
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span>    public int32 kind;
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>    public String sval;
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span>    public int64 ival;
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span>    public boolean bval;
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span>    public float64 fval;
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>    public LogField(String key, int32 kind) {
+</span><span class="row pt"><span class="ln">22</span><span class="cnt">9&times;</span>        this.key = key;
+</span><span class="row ok"><span class="ln">23</span><span class="cnt">9&times;</span>        this.kind = kind;
+</span><span class="row ok"><span class="ln">24</span><span class="cnt">9&times;</span>        this.sval = &quot;&quot;;
+</span><span class="row ok"><span class="ln">25</span><span class="cnt">9&times;</span>        this.ival = 0;
+</span><span class="row ok"><span class="ln">26</span><span class="cnt">9&times;</span>        this.bval = false;
+</span><span class="row ok"><span class="ln">27</span><span class="cnt">9&times;</span>        this.fval = 0.0;
+</span><span class="row "><span class="ln">28</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">29</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-LogfmtEncoder-cajeta"><h3>dev/cajeta/logging/LogfmtEncoder.cajeta</h3><div class="muted">100.0% lines &middot; 54.1% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import cajeta.lang.Int64;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> * Flat `key=value` pairs (Heroku/Go `logfmt`) — greppable like text, parseable
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * like JSON. Reserved keys (`ts`, `level`, `logger`, `msg`) lead, then the
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> * structured fields in insertion order. The level is lower-cased (logfmt
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> * convention); string values are quoted/escaped only when needed. Timestamp is
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * epoch millis for now (ISO-8601 rendering is a later pass).
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span>public final class LogfmtEncoder implements LogEncoder {
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span>    public LogfmtEncoder() {
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span>    public #int8[] encode(LogRecord r) {
+</span><span class="row pt"><span class="ln">18</span><span class="cnt">2&times;</span>        String line = &quot;ts=&quot; + Int64.of(r.ts).toString()
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span>            + &quot; level=&quot; + Levels.name(r.level).toLowerCase()
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>            + &quot; logger=&quot; + LogFmt.quote(r.logger)
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>            + &quot; msg=&quot; + LogFmt.quote(r.msg);
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>
+</span><span class="row ok"><span class="ln">23</span><span class="cnt">2&times;</span>        int32 n = r.fields.count();
+</span><span class="row ok"><span class="ln">24</span><span class="cnt">2&times;</span>        int32 i = 0;
+</span><span class="row ok"><span class="ln">25</span><span class="cnt">2&times;</span>        while (i &lt; n) {
+</span><span class="row ok"><span class="ln">26</span><span class="cnt">3&times;</span>            LogField f = r.fields.get(i);
+</span><span class="row pt"><span class="ln">27</span><span class="cnt">3&times;</span>            line = line + &quot; &quot; + f.key + &quot;=&quot; + LogFmt.fieldValue(f);
+</span><span class="row ok"><span class="ln">28</span><span class="cnt">3&times;</span>            i = i + 1;
+</span><span class="row "><span class="ln">29</span><span class="cnt"></span>        }
+</span><span class="row "><span class="ln">30</span><span class="cnt"></span>
+</span><span class="row pt"><span class="ln">31</span><span class="cnt">2&times;</span>        return LogFmt.bytesOf(line);
+</span><span class="row "><span class="ln">32</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">33</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-LogFmt-cajeta"><h3>dev/cajeta/logging/LogFmt.cajeta</h3><div class="muted">94.4% lines &middot; 83.3% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import cajeta.lang.Int64;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>import cajeta.lang.Float64;
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>import cajeta.lang.Boolean;
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> * Shared rendering helpers for the flat `k=v` encoders (`TextEncoder`,
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> * `LogfmtEncoder`). String values are quoted/escaped only when they need it
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * (logfmt rules: empty, or containing a space, `&quot;`, or `=`); numbers and
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * booleans render bare. `bytesOf` hands back an exactly-sized owned `int8[]`
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> * for the `Encoder` contract (the appender owns the line bytes).
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span>final class LogFmt {
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>    /** Owned, exactly-`byteLength` copy of `s`'s bytes (no capacity slack). */
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span>    static #int8[] bytesOf(String s) {
+</span><span class="row ok"><span class="ln">18</span><span class="cnt">5&times;</span>        int32 n = s.byteLength();
+</span><span class="row ok"><span class="ln">19</span><span class="cnt">5&times;</span>        int8[] out = heap int8[n];
+</span><span class="row ok"><span class="ln">20</span><span class="cnt">5&times;</span>        int32 i = 0;
+</span><span class="row ok"><span class="ln">21</span><span class="cnt">5&times;</span>        while (i &lt; n) {
+</span><span class="row ok"><span class="ln">22</span><span class="cnt">205&times;</span>            out[i] = s.byteAt(i);
+</span><span class="row ok"><span class="ln">23</span><span class="cnt">205&times;</span>            i = i + 1;
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>        }
+</span><span class="row ok"><span class="ln">25</span><span class="cnt">5&times;</span>        return out;
+</span><span class="row "><span class="ln">26</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">27</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">28</span><span class="cnt"></span>    /** Whether `v` must be double-quoted to stay an unambiguous `k=v` token. */
+</span><span class="row "><span class="ln">29</span><span class="cnt"></span>    static boolean needsQuote(String v) {
+</span><span class="row pt"><span class="ln">30</span><span class="cnt">8&times;</span>        return v.isEmpty() || v.contains(&quot; &quot;) || v.contains(&quot;\&quot;&quot;) || v.contains(&quot;=&quot;);
+</span><span class="row "><span class="ln">31</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">32</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">33</span><span class="cnt"></span>    /** `v` as a token: quoted + `\`/`&quot;`-escaped when needed, else a bare copy. */
+</span><span class="row "><span class="ln">34</span><span class="cnt"></span>    static String quote(String v) {
+</span><span class="row ok"><span class="ln">35</span><span class="cnt">8&times;</span>        if (LogFmt.needsQuote(v)) {
+</span><span class="row ok"><span class="ln">36</span><span class="cnt">3&times;</span>            String slashes = v.replace(&quot;\\&quot;, &quot;\\\\&quot;);
+</span><span class="row ok"><span class="ln">37</span><span class="cnt">3&times;</span>            String esc = slashes.replace(&quot;\&quot;&quot;, &quot;\\\&quot;&quot;);
+</span><span class="row ok"><span class="ln">38</span><span class="cnt">3&times;</span>            return &quot;\&quot;&quot; + esc + &quot;\&quot;&quot;;
+</span><span class="row "><span class="ln">39</span><span class="cnt"></span>        }
+</span><span class="row pt"><span class="ln">40</span><span class="cnt">5&times;</span>        return &quot;&quot; + v;
+</span><span class="row "><span class="ln">41</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">42</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">43</span><span class="cnt"></span>    /** A field's value rendered for `k=v`: strings quoted, scalars bare. */
+</span><span class="row "><span class="ln">44</span><span class="cnt"></span>    static String fieldValue(LogField f) {
+</span><span class="row ok"><span class="ln">45</span><span class="cnt">6&times;</span>        if (f.kind == 0) {
+</span><span class="row ok"><span class="ln">46</span><span class="cnt">4&times;</span>            return LogFmt.quote(f.sval);
+</span><span class="row "><span class="ln">47</span><span class="cnt"></span>        } else if (f.kind == 1) {
+</span><span class="row pt"><span class="ln">48</span><span class="cnt">1&times;</span>            return Int64.of(f.ival).toString();
+</span><span class="row "><span class="ln">49</span><span class="cnt"></span>        } else if (f.kind == 2) {
+</span><span class="row ok"><span class="ln">50</span><span class="cnt">1&times;</span>            return Boolean.of(f.bval).toString();
+</span><span class="row "><span class="ln">51</span><span class="cnt"></span>        }
+</span><span class="row no"><span class="ln">52</span><span class="cnt"></span>        return Float64.of(f.fval).toString();
+</span><span class="row "><span class="ln">53</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">54</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-LoggerFactory-cajeta"><h3>dev/cajeta/logging/LoggerFactory.cajeta</h3><div class="muted">50.0% lines &middot; 25.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span> * DI entry point for logging. A process singleton holding the profile-selected
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span> * `LogEncoder` and `Appender` (both DI singletons); `loggerFor` hands out
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> * per-name loggers that BORROW them, so one encoder + one appender back every
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * logger in the process. Under `--profile=test` the injected `Appender` is the
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> * masking `CapturingAppender`; under `prod` it is a file sink, under `dev` the
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> * console.
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> *
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * `Log.defaultFor` (and thus every `@Logged` class) routes here, so logging is
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> * DI-wired and test-overridable with no per-logger sink construction.
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span>@Component
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span>public final class LoggerFactory {
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>    @Inject LogEncoder encoder;
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span>    @Inject Appender appender;
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span>    public LoggerFactory() {
+</span><span class="row no"><span class="ln">20</span><span class="cnt"></span>        return;
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>    /** A logger named `name`, gated at `threshold`, sharing the DI sinks. */
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>    public #Logger loggerFor(String name, Level threshold) {
+</span><span class="row ok"><span class="ln">25</span><span class="cnt">5&times;</span>        return heap Logger(name, threshold, this.encoder, this.appender);
+</span><span class="row "><span class="ln">26</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">27</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-Logger-cajeta"><h3>dev/cajeta/logging/Logger.cajeta</h3><div class="muted">87.5% lines &middot; 66.6% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import cajeta.time.Clock;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> * The logging facade. Owns its encoder and appender; gates by severity against
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * `threshold`. Two usage shapes:
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> *
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> * ```cajeta
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * log.info(&quot;service started&quot;);                 // convenience, no fields
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> *
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> * LogRecord r = log.event(Level.WARN, &quot;slow&quot;);  // fielded
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> * r.str(&quot;route&quot;, &quot;/checkout&quot;).i64(&quot;ms&quot;, 1200);
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span> * log.emit(#r);
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span> * ```
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span> *
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span> * Below-threshold convenience calls build nothing; for the fielded form, gate
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span> * with `enabled(level)` before building the record to stay allocation-free
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span> * (SLF4J `isDebugEnabled` style). A zero-alloc no-op builder is a later perf pass.
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>public final class Logger {
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>    public String name;
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>    public Level threshold;
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>    LogEncoder encoder;
+</span><span class="row "><span class="ln">25</span><span class="cnt"></span>    Appender appender;
+</span><span class="row "><span class="ln">26</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">27</span><span class="cnt"></span>    // Dual-capable sinks (title-tracking): a caller that surrenders (`#sink`
+</span><span class="row "><span class="ln">28</span><span class="cnt"></span>    // or a fresh `heap ...()`) makes the field own + drop it; a caller that
+</span><span class="row "><span class="ln">29</span><span class="cnt"></span>    // lends a shared instance (a DI singleton, via LoggerFactory) makes the
+</span><span class="row "><span class="ln">30</span><span class="cnt"></span>    // field borrow, and the logger's drop leaves the shared sink alone.
+</span><span class="row "><span class="ln">31</span><span class="cnt"></span>    public Logger(String name, Level threshold, LogEncoder encoder, Appender appender) {
+</span><span class="row pt"><span class="ln">32</span><span class="cnt">8&times;</span>        this.name = name;
+</span><span class="row ok"><span class="ln">33</span><span class="cnt">8&times;</span>        this.threshold = threshold;
+</span><span class="row ok"><span class="ln">34</span><span class="cnt">8&times;</span>        this.encoder = encoder;
+</span><span class="row ok"><span class="ln">35</span><span class="cnt">8&times;</span>        this.appender = appender;
+</span><span class="row "><span class="ln">36</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">37</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">38</span><span class="cnt"></span>    /** Whether a record at `l` would be emitted (use to guard fielded builds). */
+</span><span class="row "><span class="ln">39</span><span class="cnt"></span>    public boolean enabled(Level l) {
+</span><span class="row ok"><span class="ln">40</span><span class="cnt">3&times;</span>        return Levels.severity(l) &gt;= Levels.severity(this.threshold);
+</span><span class="row "><span class="ln">41</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">42</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">43</span><span class="cnt"></span>    /** A fresh record stamped with now, this logger's name, level, and message. */
+</span><span class="row "><span class="ln">44</span><span class="cnt"></span>    public #LogRecord event(Level l, String msg) {
+</span><span class="row ok"><span class="ln">45</span><span class="cnt">9&times;</span>        return heap LogRecord(Clock.millisTime(), l, this.name, msg);
+</span><span class="row "><span class="ln">46</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">47</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">48</span><span class="cnt"></span>    /** Encode + append the record if at/above threshold; consumes the record. */
+</span><span class="row "><span class="ln">49</span><span class="cnt"></span>    public void emit(#LogRecord r) {
+</span><span class="row pt"><span class="ln">50</span><span class="cnt">9&times;</span>        if (Levels.severity(r.level) &gt;= Levels.severity(this.threshold)) {
+</span><span class="row ok"><span class="ln">51</span><span class="cnt">9&times;</span>            int8[] bytes = this.encoder.encode(r);
+</span><span class="row ok"><span class="ln">52</span><span class="cnt">9&times;</span>            this.appender.append(#bytes);
+</span><span class="row "><span class="ln">53</span><span class="cnt"></span>        }
+</span><span class="row "><span class="ln">54</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">55</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">56</span><span class="cnt"></span>    public void trace(String msg) {
+</span><span class="row no"><span class="ln">57</span><span class="cnt"></span>        this.logMsg(Level.TRACE, msg);
+</span><span class="row "><span class="ln">58</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">59</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">60</span><span class="cnt"></span>    public void debug(String msg) {
+</span><span class="row ok"><span class="ln">61</span><span class="cnt">1&times;</span>        this.logMsg(Level.DEBUG, msg);
+</span><span class="row "><span class="ln">62</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">63</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">64</span><span class="cnt"></span>    public void info(String msg) {
+</span><span class="row ok"><span class="ln">65</span><span class="cnt">8&times;</span>        this.logMsg(Level.INFO, msg);
+</span><span class="row "><span class="ln">66</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">67</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">68</span><span class="cnt"></span>    public void warn(String msg) {
+</span><span class="row ok"><span class="ln">69</span><span class="cnt">3&times;</span>        this.logMsg(Level.WARN, msg);
+</span><span class="row "><span class="ln">70</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">71</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">72</span><span class="cnt"></span>    public void error(String msg) {
+</span><span class="row no"><span class="ln">73</span><span class="cnt"></span>        this.logMsg(Level.ERROR, msg);
+</span><span class="row "><span class="ln">74</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">75</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">76</span><span class="cnt"></span>    void logMsg(Level l, String msg) {
+</span><span class="row ok"><span class="ln">77</span><span class="cnt">12&times;</span>        if (Levels.severity(l) &gt;= Levels.severity(this.threshold)) {
+</span><span class="row ok"><span class="ln">78</span><span class="cnt">8&times;</span>            this.emit(#this.event(l, msg));
+</span><span class="row "><span class="ln">79</span><span class="cnt"></span>        }
+</span><span class="row "><span class="ln">80</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">81</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-Log-cajeta"><h3>dev/cajeta/logging/Log.cajeta</h3><div class="muted">0.0% lines &middot; 0.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span> * Entry facade for cajeta-logging. Tier-1 factories that wire a `Logger` to an
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span> * encoder + appender with no DI container (DI wiring is Phase 3). See
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> * `docs/logging-spec.md` for the full design and `plan/logging-plan.md` for the
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * roadmap (Tier 2 adds ambient context over `cajeta.concurrent.FiberLocal`).
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span>public final class Log {
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span>    /** A logger that emits compact JSONL to stdout at/above `threshold`. */
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span>    public static #Logger console(String name, Level threshold) {
+</span><span class="row no"><span class="ln">13</span><span class="cnt"></span>        return heap Logger(name, threshold, heap JsonlEncoder(), heap ConsoleAppender());
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>    /**
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span>     * The default logger for a `@Logged`-annotated class. The compiler
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span>     * synthesizes `static Logger log = Log.defaultFor(&quot;pkg.Class&quot;)` into any
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span>     * such class, so this is the out-of-the-box configuration — now DI-wired:
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>     * it routes through the singleton `LoggerFactory`, so the encoder + appender
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>     * are the profile-selected ones (prod→JSONL/file, dev→text/console,
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>     * test→capturing) and the logger borrows those shared sinks.
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>     */
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>    public static #Logger defaultFor(String name) {
+</span><span class="row no"><span class="ln">25</span><span class="cnt"></span>        return LoggerFactory.__cajeta_inject().loggerFor(name, Level.INFO);
+</span><span class="row "><span class="ln">26</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">27</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">28</span><span class="cnt"></span>    /** A logger that captures encoded lines in-memory (for tests). */
+</span><span class="row "><span class="ln">29</span><span class="cnt"></span>    public static #Logger capturing(String name, Level threshold, #CapturingAppender sink) {
+</span><span class="row no"><span class="ln">30</span><span class="cnt"></span>        return heap Logger(name, threshold, heap JsonlEncoder(), #sink);
+</span><span class="row "><span class="ln">31</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">32</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">33</span><span class="cnt"></span>    /**
+</span><span class="row "><span class="ln">34</span><span class="cnt"></span>     * Smoke demo for `cajeta jit-run dev.cajeta.logging.Log.demo`: emits two
+</span><span class="row "><span class="ln">35</span><span class="cnt"></span>     * JSONL lines to stdout (an INFO with no fields, a WARN with three fields)
+</span><span class="row "><span class="ln">36</span><span class="cnt"></span>     * and verifies the DEBUG line is gated out.
+</span><span class="row "><span class="ln">37</span><span class="cnt"></span>     */
+</span><span class="row "><span class="ln">38</span><span class="cnt"></span>    public static void demo() {
+</span><span class="row no"><span class="ln">39</span><span class="cnt"></span>        Logger log = Log.console(&quot;demo&quot;, Level.INFO);
+</span><span class="row "><span class="ln">40</span><span class="cnt"></span>
+</span><span class="row no"><span class="ln">41</span><span class="cnt"></span>        log.info(&quot;service started&quot;);
+</span><span class="row "><span class="ln">42</span><span class="cnt"></span>
+</span><span class="row no"><span class="ln">43</span><span class="cnt"></span>        LogRecord r = log.event(Level.WARN, &quot;slow request&quot;);
+</span><span class="row no"><span class="ln">44</span><span class="cnt"></span>        r.str(&quot;route&quot;, &quot;/checkout&quot;).i64(&quot;ms&quot;, 1200).flag(&quot;retried&quot;, true);
+</span><span class="row no"><span class="ln">45</span><span class="cnt"></span>        log.emit(#r);
+</span><span class="row "><span class="ln">46</span><span class="cnt"></span>
+</span><span class="row no"><span class="ln">47</span><span class="cnt"></span>        log.debug(&quot;below threshold — should not appear&quot;);
+</span><span class="row "><span class="ln">48</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">49</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">50</span><span class="cnt"></span>    /**
+</span><span class="row "><span class="ln">51</span><span class="cnt"></span>     * Native entry shim (`--emit=exe dev.cajeta.logging.Log.run`): runs the
+</span><span class="row "><span class="ln">52</span><span class="cnt"></span>     * demo, exits 0. A standalone smoke point while `jit-run` is blocked here by
+</span><span class="row "><span class="ln">53</span><span class="cnt"></span>     * the reflection-thunk env gap.
+</span><span class="row "><span class="ln">54</span><span class="cnt"></span>     */
+</span><span class="row "><span class="ln">55</span><span class="cnt"></span>    public static int32 run() {
+</span><span class="row no"><span class="ln">56</span><span class="cnt"></span>        Log.demo();
+</span><span class="row no"><span class="ln">57</span><span class="cnt"></span>        return 0;
+</span><span class="row "><span class="ln">58</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">59</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-LogRecord-cajeta"><h3>dev/cajeta/logging/LogRecord.cajeta</h3><div class="muted">80.9% lines &middot; 50.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import cajeta.collection.ArrayList;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> * One log event: timestamp (epoch millis), level, logger name, message, and an
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * ordered list of structured fields. Fields are added with the fluent
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> * `str`/`i64`/`f64`/`flag` methods, each returning `this` for chaining (the same
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> * concrete-class fluent style `JsonWriter` uses):
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> *
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * ```cajeta
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> * LogRecord r = log.event(Level.WARN, &quot;slow request&quot;);
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> * r.str(&quot;route&quot;, &quot;/checkout&quot;).i64(&quot;ms&quot;, 1200).flag(&quot;retried&quot;, true);
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span> * log.emit(#r);
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span> * ```
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span> *
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span> * Method names avoid the primitive type keywords (`int64`/`float64`/`boolean`):
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span> * `i64` = int64 field, `f64` = float64 field, `flag` = boolean field.
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>public final class LogRecord {
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>    public int64 ts;
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>    public Level level;
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>    public String logger;
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>    public String msg;
+</span><span class="row "><span class="ln">25</span><span class="cnt"></span>    public ArrayList&lt;LogField&gt; fields;
+</span><span class="row "><span class="ln">26</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">27</span><span class="cnt"></span>    public LogRecord(int64 ts, Level level, String logger, String msg) {
+</span><span class="row ok"><span class="ln">28</span><span class="cnt">14&times;</span>        this.ts = ts;
+</span><span class="row ok"><span class="ln">29</span><span class="cnt">14&times;</span>        this.level = level;
+</span><span class="row pt"><span class="ln">30</span><span class="cnt">14&times;</span>        this.logger = logger;
+</span><span class="row pt"><span class="ln">31</span><span class="cnt">14&times;</span>        this.msg = msg;
+</span><span class="row pt"><span class="ln">32</span><span class="cnt">14&times;</span>        this.fields = heap ArrayList&lt;LogField&gt;();
+</span><span class="row "><span class="ln">33</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">34</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">35</span><span class="cnt"></span>    /** Add a string-valued field. */
+</span><span class="row "><span class="ln">36</span><span class="cnt"></span>    public LogRecord str(String key, String value) {
+</span><span class="row ok"><span class="ln">37</span><span class="cnt">5&times;</span>        LogField f = heap LogField(key, 0);
+</span><span class="row pt"><span class="ln">38</span><span class="cnt">5&times;</span>        f.sval = value;
+</span><span class="row ok"><span class="ln">39</span><span class="cnt">5&times;</span>        this.fields.add(#f);
+</span><span class="row ok"><span class="ln">40</span><span class="cnt">5&times;</span>        return this;
+</span><span class="row "><span class="ln">41</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">42</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">43</span><span class="cnt"></span>    /** Add an int64-valued field. */
+</span><span class="row "><span class="ln">44</span><span class="cnt"></span>    public LogRecord i64(String key, int64 value) {
+</span><span class="row ok"><span class="ln">45</span><span class="cnt">2&times;</span>        LogField f = heap LogField(key, 1);
+</span><span class="row ok"><span class="ln">46</span><span class="cnt">2&times;</span>        f.ival = value;
+</span><span class="row ok"><span class="ln">47</span><span class="cnt">2&times;</span>        this.fields.add(#f);
+</span><span class="row ok"><span class="ln">48</span><span class="cnt">2&times;</span>        return this;
+</span><span class="row "><span class="ln">49</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">50</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">51</span><span class="cnt"></span>    /** Add a boolean-valued field. */
+</span><span class="row "><span class="ln">52</span><span class="cnt"></span>    public LogRecord flag(String key, boolean value) {
+</span><span class="row ok"><span class="ln">53</span><span class="cnt">2&times;</span>        LogField f = heap LogField(key, 2);
+</span><span class="row ok"><span class="ln">54</span><span class="cnt">2&times;</span>        f.bval = value;
+</span><span class="row ok"><span class="ln">55</span><span class="cnt">2&times;</span>        this.fields.add(#f);
+</span><span class="row ok"><span class="ln">56</span><span class="cnt">2&times;</span>        return this;
+</span><span class="row "><span class="ln">57</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">58</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">59</span><span class="cnt"></span>    /** Add a float64-valued field. */
+</span><span class="row "><span class="ln">60</span><span class="cnt"></span>    public LogRecord f64(String key, float64 value) {
+</span><span class="row no"><span class="ln">61</span><span class="cnt"></span>        LogField f = heap LogField(key, 3);
+</span><span class="row no"><span class="ln">62</span><span class="cnt"></span>        f.fval = value;
+</span><span class="row no"><span class="ln">63</span><span class="cnt"></span>        this.fields.add(#f);
+</span><span class="row no"><span class="ln">64</span><span class="cnt"></span>        return this;
+</span><span class="row "><span class="ln">65</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">66</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-selftest-AppenderTest-cajeta"><h3>dev/cajeta/logging/selftest/AppenderTest.cajeta</h3><div class="muted">100.0% lines &middot; 50.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging.selftest;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import dev.cajeta.unit.Assert;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>import dev.cajeta.logging.Logger;
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>import dev.cajeta.logging.Level;
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span>import dev.cajeta.logging.JsonlEncoder;
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span>import dev.cajeta.logging.FileAppender;
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span>import cajeta.io.file.File;
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span>import cajeta.io.file.OpenMode;
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span>import cajeta.lang.String;
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> * Phase 3 appender tests. `FileAppender` writes each encoded line + newline to
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span> * a file; the test logs through a `Logger` wired to a `FileAppender`, then
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span> * reads the file back and asserts on its contents.
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span>public class AppenderTest {
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span>    public AppenderTest() {
+</span><span class="row ok"><span class="ln">20</span><span class="cnt">3&times;</span>        return;
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>    public void fileAppenderWritesOneJsonlLinePerRecord() {
+</span><span class="row ok"><span class="ln">25</span><span class="cnt">1&times;</span>        String path = &quot;/tmp/cajeta_logging_fileappender_test.jsonl&quot;;
+</span><span class="row ok"><span class="ln">26</span><span class="cnt">1&times;</span>        FileAppender out = heap FileAppender(path, OpenMode.WRITE);
+</span><span class="row ok"><span class="ln">27</span><span class="cnt">1&times;</span>        Logger log = heap Logger(&quot;svc&quot;, Level.INFO, heap JsonlEncoder(), #out);
+</span><span class="row ok"><span class="ln">28</span><span class="cnt">1&times;</span>        log.info(&quot;first&quot;);
+</span><span class="row ok"><span class="ln">29</span><span class="cnt">1&times;</span>        log.info(&quot;second&quot;);
+</span><span class="row "><span class="ln">30</span><span class="cnt"></span>        // FileAppender flushes per line, so bytes are on disk after emit; the
+</span><span class="row "><span class="ln">31</span><span class="cnt"></span>        // logger owns `out` and drops it at scope end (no read of `out` here).
+</span><span class="row "><span class="ln">32</span><span class="cnt"></span>
+</span><span class="row ok"><span class="ln">33</span><span class="cnt">1&times;</span>        int8[] bytes = File.readAllBytes(path);
+</span><span class="row ok"><span class="ln">34</span><span class="cnt">1&times;</span>        int32 n = (int32) bytes.count();
+</span><span class="row ok"><span class="ln">35</span><span class="cnt">1&times;</span>        String content = heap String(#bytes, n);
+</span><span class="row pt"><span class="ln">36</span><span class="cnt">1&times;</span>        Assert.that(content).contains(&quot;\&quot;msg\&quot;:\&quot;first\&quot;&quot;);
+</span><span class="row pt"><span class="ln">37</span><span class="cnt">1&times;</span>        Assert.that(content).contains(&quot;\&quot;msg\&quot;:\&quot;second\&quot;&quot;);
+</span><span class="row "><span class="ln">38</span><span class="cnt"></span>        // Two records → two newlines (one per line).
+</span><span class="row pt"><span class="ln">39</span><span class="cnt">1&times;</span>        Assert.that(content).contains(&quot;\&quot;logger\&quot;:\&quot;svc\&quot;&quot;);
+</span><span class="row ok"><span class="ln">40</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">41</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">42</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">43</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">44</span><span class="cnt"></span>    public void fileAppenderGatesBelowThreshold() {
+</span><span class="row ok"><span class="ln">45</span><span class="cnt">1&times;</span>        String path = &quot;/tmp/cajeta_logging_fileappender_gate.jsonl&quot;;
+</span><span class="row ok"><span class="ln">46</span><span class="cnt">1&times;</span>        FileAppender out = heap FileAppender(path, OpenMode.WRITE);
+</span><span class="row ok"><span class="ln">47</span><span class="cnt">1&times;</span>        Logger log = heap Logger(&quot;svc&quot;, Level.WARN, heap JsonlEncoder(), #out);
+</span><span class="row ok"><span class="ln">48</span><span class="cnt">1&times;</span>        log.info(&quot;should not appear&quot;);
+</span><span class="row ok"><span class="ln">49</span><span class="cnt">1&times;</span>        log.warn(&quot;kept&quot;);
+</span><span class="row "><span class="ln">50</span><span class="cnt"></span>
+</span><span class="row ok"><span class="ln">51</span><span class="cnt">1&times;</span>        int8[] bytes = File.readAllBytes(path);
+</span><span class="row ok"><span class="ln">52</span><span class="cnt">1&times;</span>        int32 n = (int32) bytes.count();
+</span><span class="row ok"><span class="ln">53</span><span class="cnt">1&times;</span>        String content = heap String(#bytes, n);
+</span><span class="row pt"><span class="ln">54</span><span class="cnt">1&times;</span>        Assert.that(content).contains(&quot;\&quot;msg\&quot;:\&quot;kept\&quot;&quot;);
+</span><span class="row ok"><span class="ln">55</span><span class="cnt">1&times;</span>        Assert.isFalse(content.contains(&quot;should not appear&quot;));
+</span><span class="row ok"><span class="ln">56</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">57</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">58</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">59</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">60</span><span class="cnt"></span>    public void compositeAppenderFansOutToEverySink() {
+</span><span class="row ok"><span class="ln">61</span><span class="cnt">1&times;</span>        String pathA = &quot;/tmp/cajeta_logging_composite_a.jsonl&quot;;
+</span><span class="row ok"><span class="ln">62</span><span class="cnt">1&times;</span>        String pathB = &quot;/tmp/cajeta_logging_composite_b.jsonl&quot;;
+</span><span class="row "><span class="ln">63</span><span class="cnt"></span>        // FileAppender flushes per line, so the bytes are on disk after emit —
+</span><span class="row "><span class="ln">64</span><span class="cnt"></span>        // no close() needed (the composite owns the children, can't close them).
+</span><span class="row ok"><span class="ln">65</span><span class="cnt">1&times;</span>        CompositeAppender out = heap CompositeAppender();
+</span><span class="row pt"><span class="ln">66</span><span class="cnt">1&times;</span>        out.add(#heap FileAppender(pathA, OpenMode.WRITE));
+</span><span class="row pt"><span class="ln">67</span><span class="cnt">1&times;</span>        out.add(#heap FileAppender(pathB, OpenMode.WRITE));
+</span><span class="row ok"><span class="ln">68</span><span class="cnt">1&times;</span>        Logger log = heap Logger(&quot;svc&quot;, Level.INFO, heap JsonlEncoder(), #out);
+</span><span class="row ok"><span class="ln">69</span><span class="cnt">1&times;</span>        log.info(&quot;teed&quot;);
+</span><span class="row "><span class="ln">70</span><span class="cnt"></span>
+</span><span class="row ok"><span class="ln">71</span><span class="cnt">1&times;</span>        int8[] ba = File.readAllBytes(pathA);
+</span><span class="row ok"><span class="ln">72</span><span class="cnt">1&times;</span>        String a = heap String(#ba, (int32) ba.count());
+</span><span class="row ok"><span class="ln">73</span><span class="cnt">1&times;</span>        int8[] bb = File.readAllBytes(pathB);
+</span><span class="row ok"><span class="ln">74</span><span class="cnt">1&times;</span>        String b = heap String(#bb, (int32) bb.count());
+</span><span class="row pt"><span class="ln">75</span><span class="cnt">1&times;</span>        Assert.that(a).contains(&quot;\&quot;msg\&quot;:\&quot;teed\&quot;&quot;);
+</span><span class="row pt"><span class="ln">76</span><span class="cnt">1&times;</span>        Assert.that(b).contains(&quot;\&quot;msg\&quot;:\&quot;teed\&quot;&quot;);
+</span><span class="row ok"><span class="ln">77</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">78</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">79</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-selftest-DiLoggingTest-cajeta"><h3>dev/cajeta/logging/selftest/DiLoggingTest.cajeta</h3><div class="muted">100.0% lines &middot; 50.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging.selftest;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import dev.cajeta.unit.Assert;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>import dev.cajeta.logging.LoggerFactory;
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>import dev.cajeta.logging.CapturingAppender;
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span>import dev.cajeta.logging.Logger;
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span>import dev.cajeta.logging.Level;
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * DI-wired logging (Phase 3). Under `--profile=test` the `LoggerFactory`
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * injects the masking `CapturingAppender` and `JsonlEncoder`; a factory-produced
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> * logger borrows them, and the captured line is asserted through the same
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> * singleton. Counts are read as deltas because the appender is a process
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span> * singleton shared across tests.
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>public class DiLoggingTest {
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span>    public DiLoggingTest() {
+</span><span class="row ok"><span class="ln">19</span><span class="cnt">2&times;</span>        return;
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>    public void factoryLoggerCapturesViaTestComponent() {
+</span><span class="row ok"><span class="ln">24</span><span class="cnt">1&times;</span>        CapturingAppender cap = CapturingAppender.__cajeta_inject();
+</span><span class="row ok"><span class="ln">25</span><span class="cnt">1&times;</span>        int32 before = cap.count();
+</span><span class="row ok"><span class="ln">26</span><span class="cnt">1&times;</span>        Logger log = LoggerFactory.__cajeta_inject().loggerFor(&quot;svc&quot;, Level.INFO);
+</span><span class="row ok"><span class="ln">27</span><span class="cnt">1&times;</span>        log.info(&quot;di wired hello&quot;);
+</span><span class="row pt"><span class="ln">28</span><span class="cnt">1&times;</span>        Assert.that(cap.count()).isEqualTo(before + 1);
+</span><span class="row pt"><span class="ln">29</span><span class="cnt">1&times;</span>        Assert.that(cap.get(cap.count() - 1)).contains(&quot;\&quot;msg\&quot;:\&quot;di wired hello\&quot;&quot;);
+</span><span class="row ok"><span class="ln">30</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">31</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">32</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">33</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">34</span><span class="cnt"></span>    public void factoryLoggerRespectsThreshold() {
+</span><span class="row ok"><span class="ln">35</span><span class="cnt">1&times;</span>        CapturingAppender cap = CapturingAppender.__cajeta_inject();
+</span><span class="row ok"><span class="ln">36</span><span class="cnt">1&times;</span>        int32 before = cap.count();
+</span><span class="row ok"><span class="ln">37</span><span class="cnt">1&times;</span>        Logger log = LoggerFactory.__cajeta_inject().loggerFor(&quot;svc&quot;, Level.WARN);
+</span><span class="row ok"><span class="ln">38</span><span class="cnt">1&times;</span>        log.info(&quot;below threshold&quot;);
+</span><span class="row pt"><span class="ln">39</span><span class="cnt">1&times;</span>        Assert.that(cap.count()).isEqualTo(before);
+</span><span class="row ok"><span class="ln">40</span><span class="cnt">1&times;</span>        log.warn(&quot;at threshold&quot;);
+</span><span class="row pt"><span class="ln">41</span><span class="cnt">1&times;</span>        Assert.that(cap.count()).isEqualTo(before + 1);
+</span><span class="row ok"><span class="ln">42</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">43</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">44</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-selftest-EncoderTest-cajeta"><h3>dev/cajeta/logging/selftest/EncoderTest.cajeta</h3><div class="muted">100.0% lines &middot; 50.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging.selftest;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import dev.cajeta.unit.Assert;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>import dev.cajeta.logging.Level;
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>import dev.cajeta.logging.LogRecord;
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span>import dev.cajeta.logging.TextEncoder;
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span>import dev.cajeta.logging.LogfmtEncoder;
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * Phase 2 output-format tests: TextEncoder + LogfmtEncoder. Each builds a
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * LogRecord and calls `encode` DIRECTLY (no Logger / appender), then asserts on
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> * the rendered line's shape, level rendering, field tail, and value
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> * quoting/escaping. Direct encoding keeps ownership simple — the record is a
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span> * plain local, the encoder borrows it, the returned bytes become a String.
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>public class EncoderTest {
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span>    public EncoderTest() {
+</span><span class="row ok"><span class="ln">19</span><span class="cnt">5&times;</span>        return;
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>    // Render `record` through `enc` and return the line as a String.
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>    static #String render(TextEncoder enc, LogRecord rec) {
+</span><span class="row ok"><span class="ln">24</span><span class="cnt">3&times;</span>        int8[] bytes = enc.encode(rec);
+</span><span class="row ok"><span class="ln">25</span><span class="cnt">3&times;</span>        int32 n = (int32) bytes.count();
+</span><span class="row ok"><span class="ln">26</span><span class="cnt">3&times;</span>        return heap String(#bytes, n);
+</span><span class="row "><span class="ln">27</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">28</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">29</span><span class="cnt"></span>    static #String renderLogfmt(LogfmtEncoder enc, LogRecord rec) {
+</span><span class="row ok"><span class="ln">30</span><span class="cnt">2&times;</span>        int8[] bytes = enc.encode(rec);
+</span><span class="row ok"><span class="ln">31</span><span class="cnt">2&times;</span>        int32 n = (int32) bytes.count();
+</span><span class="row ok"><span class="ln">32</span><span class="cnt">2&times;</span>        return heap String(#bytes, n);
+</span><span class="row "><span class="ln">33</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">34</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">35</span><span class="cnt"></span>    // ---- TextEncoder -----------------------------------------------------
+</span><span class="row "><span class="ln">36</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">37</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">38</span><span class="cnt"></span>    public void textRendersLevelLoggerMsgAndFields() {
+</span><span class="row ok"><span class="ln">39</span><span class="cnt">1&times;</span>        LogRecord r = heap LogRecord(0, Level.INFO, &quot;order&quot;, &quot;order placed&quot;);
+</span><span class="row pt"><span class="ln">40</span><span class="cnt">1&times;</span>        r.str(&quot;id&quot;, &quot;o_42&quot;).i64(&quot;amount&quot;, 1999);
+</span><span class="row ok"><span class="ln">41</span><span class="cnt">1&times;</span>        TextEncoder enc = heap TextEncoder();
+</span><span class="row ok"><span class="ln">42</span><span class="cnt">1&times;</span>        String line = EncoderTest.render(enc, r);
+</span><span class="row pt"><span class="ln">43</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;INFO &quot;);          // padded to width 5
+</span><span class="row pt"><span class="ln">44</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;order placed&quot;);    // msg emitted raw
+</span><span class="row pt"><span class="ln">45</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;id=o_42&quot;);
+</span><span class="row pt"><span class="ln">46</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;amount=1999&quot;);
+</span><span class="row ok"><span class="ln">47</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">48</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">49</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">50</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">51</span><span class="cnt"></span>    public void textQuotesFieldValuesWithSpaces() {
+</span><span class="row ok"><span class="ln">52</span><span class="cnt">1&times;</span>        LogRecord r = heap LogRecord(0, Level.WARN, &quot;svc&quot;, &quot;slow&quot;);
+</span><span class="row pt"><span class="ln">53</span><span class="cnt">1&times;</span>        r.str(&quot;note&quot;, &quot;needs review&quot;);
+</span><span class="row ok"><span class="ln">54</span><span class="cnt">1&times;</span>        TextEncoder enc = heap TextEncoder();
+</span><span class="row ok"><span class="ln">55</span><span class="cnt">1&times;</span>        String line = EncoderTest.render(enc, r);
+</span><span class="row pt"><span class="ln">56</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;note=\&quot;needs review\&quot;&quot;);
+</span><span class="row ok"><span class="ln">57</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">58</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">59</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">60</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">61</span><span class="cnt"></span>    public void textPadsShortLevels() {
+</span><span class="row ok"><span class="ln">62</span><span class="cnt">1&times;</span>        LogRecord r = heap LogRecord(0, Level.WARN, &quot;svc&quot;, &quot;hi&quot;);
+</span><span class="row ok"><span class="ln">63</span><span class="cnt">1&times;</span>        TextEncoder enc = heap TextEncoder();
+</span><span class="row ok"><span class="ln">64</span><span class="cnt">1&times;</span>        String line = EncoderTest.render(enc, r);
+</span><span class="row "><span class="ln">65</span><span class="cnt"></span>        // WARN (4) pads to &quot;WARN &quot; then a single separator space → &quot;WARN  &quot;.
+</span><span class="row pt"><span class="ln">66</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;WARN  &quot;);
+</span><span class="row ok"><span class="ln">67</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">68</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">69</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">70</span><span class="cnt"></span>    // ---- LogfmtEncoder ---------------------------------------------------
+</span><span class="row "><span class="ln">71</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">72</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">73</span><span class="cnt"></span>    public void logfmtRendersReservedKeysThenFields() {
+</span><span class="row ok"><span class="ln">74</span><span class="cnt">1&times;</span>        LogRecord r = heap LogRecord(0, Level.WARN, &quot;order&quot;, &quot;order placed&quot;);
+</span><span class="row pt"><span class="ln">75</span><span class="cnt">1&times;</span>        r.str(&quot;id&quot;, &quot;o_42&quot;).flag(&quot;ok&quot;, true);
+</span><span class="row ok"><span class="ln">76</span><span class="cnt">1&times;</span>        LogfmtEncoder enc = heap LogfmtEncoder();
+</span><span class="row ok"><span class="ln">77</span><span class="cnt">1&times;</span>        String line = EncoderTest.renderLogfmt(enc, r);
+</span><span class="row pt"><span class="ln">78</span><span class="cnt">1&times;</span>        Assert.that(line).startsWith(&quot;ts=&quot;);
+</span><span class="row pt"><span class="ln">79</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;level=warn&quot;);           // lower-cased
+</span><span class="row pt"><span class="ln">80</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;logger=order&quot;);
+</span><span class="row pt"><span class="ln">81</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;msg=\&quot;order placed\&quot;&quot;);  // quoted (space)
+</span><span class="row pt"><span class="ln">82</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;id=o_42&quot;);
+</span><span class="row pt"><span class="ln">83</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;ok=true&quot;);
+</span><span class="row ok"><span class="ln">84</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">85</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">86</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">87</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">88</span><span class="cnt"></span>    public void logfmtEscapesQuotesInValues() {
+</span><span class="row ok"><span class="ln">89</span><span class="cnt">1&times;</span>        LogRecord r = heap LogRecord(0, Level.INFO, &quot;svc&quot;, &quot;m&quot;);
+</span><span class="row pt"><span class="ln">90</span><span class="cnt">1&times;</span>        r.str(&quot;path&quot;, &quot;a\&quot;b&quot;);
+</span><span class="row ok"><span class="ln">91</span><span class="cnt">1&times;</span>        LogfmtEncoder enc = heap LogfmtEncoder();
+</span><span class="row ok"><span class="ln">92</span><span class="cnt">1&times;</span>        String line = EncoderTest.renderLogfmt(enc, r);
+</span><span class="row "><span class="ln">93</span><span class="cnt"></span>        // value a&quot;b → quoted + escaped: path=&quot;a\&quot;b&quot;
+</span><span class="row pt"><span class="ln">94</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;path=\&quot;a\\\&quot;b\&quot;&quot;);
+</span><span class="row ok"><span class="ln">95</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">96</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">97</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-selftest-LoggedAnnotationTest-cajeta"><h3>dev/cajeta/logging/selftest/LoggedAnnotationTest.cajeta</h3><div class="muted">100.0% lines &middot; 50.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging.selftest;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import dev.cajeta.unit.Assert;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>import dev.cajeta.logging.Level;
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * A service carrying `@Logged` (Cajeta's @Slf4j). The compiler injects
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> * `static Logger log = Log.defaultFor(&quot;&lt;this class&gt;&quot;)` — the `log` handle used
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> * in the methods below is never declared. The accessors expose the synthesized
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * logger's state so the test can assert on it. Statically constructed by the
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * test (so its static initializer is retained), exercising @Logged the way a
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> * real consumer uses it.
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span>@Logged
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span>class LoggedService {
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>    public LoggedService() {
+</span><span class="row ok"><span class="ln">17</span><span class="cnt">3&times;</span>        return;
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>    /** Name of the synthesized logger — defaults to this class's canonical. */
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>    public String loggerName() {
+</span><span class="row ok"><span class="ln">22</span><span class="cnt">1&times;</span>        return log.name;
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">25</span><span class="cnt"></span>    /** Whether the synthesized logger emits at `l` (default threshold INFO). */
+</span><span class="row "><span class="ln">26</span><span class="cnt"></span>    public boolean emitsAt(Level l) {
+</span><span class="row ok"><span class="ln">27</span><span class="cnt">3&times;</span>        return log.enabled(l);
+</span><span class="row "><span class="ln">28</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">29</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">30</span><span class="cnt"></span>    /** Exercise the convenience call path; below-threshold, emits nothing. */
+</span><span class="row "><span class="ln">31</span><span class="cnt"></span>    public void warmUp() {
+</span><span class="row ok"><span class="ln">32</span><span class="cnt">1&times;</span>        log.debug(&quot;not emitted, but must not crash&quot;);
+</span><span class="row "><span class="ln">33</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">34</span><span class="cnt"></span>}
+</span><span class="row "><span class="ln">35</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">36</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">37</span><span class="cnt"></span> * `@Logged` synthesis test. Verifies the injected `log` field exists (its
+</span><span class="row "><span class="ln">38</span><span class="cnt"></span> * static initializer ran → non-null), is named for the annotated class, and
+</span><span class="row "><span class="ln">39</span><span class="cnt"></span> * carries the default INFO threshold. The emit/format path is covered by
+</span><span class="row "><span class="ln">40</span><span class="cnt"></span> * LoggingTest / AppenderTest; this covers the annotation wiring.
+</span><span class="row "><span class="ln">41</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">42</span><span class="cnt"></span>public class LoggedAnnotationTest {
+</span><span class="row "><span class="ln">43</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">44</span><span class="cnt"></span>    public LoggedAnnotationTest() {
+</span><span class="row ok"><span class="ln">45</span><span class="cnt">3&times;</span>        return;
+</span><span class="row "><span class="ln">46</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">47</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">48</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">49</span><span class="cnt"></span>    public void logFieldIsNamedForAnnotatedClass() {
+</span><span class="row ok"><span class="ln">50</span><span class="cnt">1&times;</span>        LoggedService svc = heap LoggedService();
+</span><span class="row pt"><span class="ln">51</span><span class="cnt">1&times;</span>        Assert.that(svc.loggerName()).isEqualTo(
+</span><span class="row "><span class="ln">52</span><span class="cnt"></span>            &quot;dev.cajeta.logging.selftest.LoggedService&quot;);
+</span><span class="row "><span class="ln">53</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">54</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">55</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">56</span><span class="cnt"></span>    public void logFieldGatesAtInfoByDefault() {
+</span><span class="row ok"><span class="ln">57</span><span class="cnt">1&times;</span>        LoggedService svc = heap LoggedService();
+</span><span class="row ok"><span class="ln">58</span><span class="cnt">1&times;</span>        Assert.isTrue(svc.emitsAt(Level.INFO));
+</span><span class="row ok"><span class="ln">59</span><span class="cnt">1&times;</span>        Assert.isTrue(svc.emitsAt(Level.WARN));
+</span><span class="row ok"><span class="ln">60</span><span class="cnt">1&times;</span>        Assert.isFalse(svc.emitsAt(Level.DEBUG));
+</span><span class="row "><span class="ln">61</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">62</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">63</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">64</span><span class="cnt"></span>    public void convenienceCallsDoNotCrash() {
+</span><span class="row ok"><span class="ln">65</span><span class="cnt">1&times;</span>        LoggedService svc = heap LoggedService();
+</span><span class="row ok"><span class="ln">66</span><span class="cnt">1&times;</span>        svc.warmUp();
+</span><span class="row ok"><span class="ln">67</span><span class="cnt">1&times;</span>        Assert.isTrue(true);
+</span><span class="row "><span class="ln">68</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">69</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-selftest-LoggedReflectionDiscoveryTest-cajeta"><h3>dev/cajeta/logging/selftest/LoggedReflectionDiscoveryTest.cajeta</h3><div class="muted">100.0% lines &middot; 50.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging.selftest;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import dev.cajeta.unit.Assert;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> * Regression for the original task-#68 concern: `@Logged` applied directly to a
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * class that is itself discovered *and invoked* reflectively (the cajeta-unit
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> * Runner finds every `@Test` class via `Class.allClasses()` and calls its test
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> * methods through the reflect invoke adapter). The synthesized
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * `static Logger log = Log.defaultFor(...)` is initialized by a clinit
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * registered in `llvm.global_ctors`, which runs at startup independent of how
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> * the class is reached — so `log` is live here, in a class with no static
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> * construction site of its own.
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span> *
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span> * (#68 was first read as &quot;lean DCE strips the reflection-only class's clinit&quot;.
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span> * It does not: lean DCE gates only the reflective *registration* ctor, never
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span> * the clinit. The early crash was the annotation name-resolution + static-field
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span> * load-through codegen bugs, since fixed; this test pins the corrected behavior.)
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>@Logged
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>public class LoggedReflectionDiscoveryTest {
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>    public LoggedReflectionDiscoveryTest() {
+</span><span class="row ok"><span class="ln">24</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">25</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">26</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">27</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">28</span><span class="cnt"></span>    public void logIsInitializedOnReflectivelyDiscoveredClass() {
+</span><span class="row ok"><span class="ln">29</span><span class="cnt">1&times;</span>        String actual = log.name;
+</span><span class="row pt"><span class="ln">30</span><span class="cnt">1&times;</span>        Assert.that(actual).isEqualTo(
+</span><span class="row "><span class="ln">31</span><span class="cnt"></span>            &quot;dev.cajeta.logging.selftest.LoggedReflectionDiscoveryTest&quot;);
+</span><span class="row "><span class="ln">32</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">33</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-selftest-LoggingTest-cajeta"><h3>dev/cajeta/logging/selftest/LoggingTest.cajeta</h3><div class="muted">100.0% lines &middot; 50.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging.selftest;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import dev.cajeta.unit.Assert;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>import dev.cajeta.logging.Logger;
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>import dev.cajeta.logging.Level;
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span>import dev.cajeta.logging.LogRecord;
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span>import dev.cajeta.logging.LoggerFactory;
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span>import dev.cajeta.logging.CapturingAppender;
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * Facade tests over the DI-wired logger. Under `--profile=test` the
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> * `LoggerFactory` injects the `JsonlEncoder` + the masking `CapturingAppender`,
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> * so a factory-produced logger writes JSONL into the captured sink. Counts are
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span> * read as deltas because the appender is a process singleton shared across
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span> * tests. (Sinks are NOT lent from a local — that field-store-of-borrow is
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span> * unsound at v1; DI singletons are the sound shared-sink path.)
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span>public class LoggingTest {
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>    public LoggingTest() {
+</span><span class="row ok"><span class="ln">21</span><span class="cnt">3&times;</span>        return;
+</span><span class="row "><span class="ln">22</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">25</span><span class="cnt"></span>    public void infoLineIsCapturedAsJsonl() {
+</span><span class="row ok"><span class="ln">26</span><span class="cnt">1&times;</span>        CapturingAppender cap = CapturingAppender.__cajeta_inject();
+</span><span class="row ok"><span class="ln">27</span><span class="cnt">1&times;</span>        int32 before = cap.count();
+</span><span class="row ok"><span class="ln">28</span><span class="cnt">1&times;</span>        Logger log = LoggerFactory.__cajeta_inject().loggerFor(&quot;svc&quot;, Level.INFO);
+</span><span class="row ok"><span class="ln">29</span><span class="cnt">1&times;</span>        log.info(&quot;service started&quot;);
+</span><span class="row pt"><span class="ln">30</span><span class="cnt">1&times;</span>        Assert.that(cap.count()).isEqualTo(before + 1);
+</span><span class="row ok"><span class="ln">31</span><span class="cnt">1&times;</span>        String line = cap.get(cap.count() - 1);
+</span><span class="row pt"><span class="ln">32</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;\&quot;level\&quot;:\&quot;INFO\&quot;&quot;);
+</span><span class="row pt"><span class="ln">33</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;\&quot;logger\&quot;:\&quot;svc\&quot;&quot;);
+</span><span class="row pt"><span class="ln">34</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;\&quot;msg\&quot;:\&quot;service started\&quot;&quot;);
+</span><span class="row ok"><span class="ln">35</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">36</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">37</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">38</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">39</span><span class="cnt"></span>    public void belowThresholdIsGatedOut() {
+</span><span class="row ok"><span class="ln">40</span><span class="cnt">1&times;</span>        CapturingAppender cap = CapturingAppender.__cajeta_inject();
+</span><span class="row ok"><span class="ln">41</span><span class="cnt">1&times;</span>        int32 before = cap.count();
+</span><span class="row ok"><span class="ln">42</span><span class="cnt">1&times;</span>        Logger log = LoggerFactory.__cajeta_inject().loggerFor(&quot;svc&quot;, Level.WARN);
+</span><span class="row ok"><span class="ln">43</span><span class="cnt">1&times;</span>        log.info(&quot;not severe enough&quot;);
+</span><span class="row pt"><span class="ln">44</span><span class="cnt">1&times;</span>        Assert.that(cap.count()).isEqualTo(before);
+</span><span class="row ok"><span class="ln">45</span><span class="cnt">1&times;</span>        log.warn(&quot;now we are talking&quot;);
+</span><span class="row pt"><span class="ln">46</span><span class="cnt">1&times;</span>        Assert.that(cap.count()).isEqualTo(before + 1);
+</span><span class="row ok"><span class="ln">47</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">48</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">49</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">50</span><span class="cnt"></span>    @Test
+</span><span class="row "><span class="ln">51</span><span class="cnt"></span>    public void fieldsRenderAfterReservedKeys() {
+</span><span class="row ok"><span class="ln">52</span><span class="cnt">1&times;</span>        CapturingAppender cap = CapturingAppender.__cajeta_inject();
+</span><span class="row ok"><span class="ln">53</span><span class="cnt">1&times;</span>        int32 before = cap.count();
+</span><span class="row ok"><span class="ln">54</span><span class="cnt">1&times;</span>        Logger log = LoggerFactory.__cajeta_inject().loggerFor(&quot;svc&quot;, Level.INFO);
+</span><span class="row ok"><span class="ln">55</span><span class="cnt">1&times;</span>        LogRecord r = log.event(Level.WARN, &quot;slow request&quot;);
+</span><span class="row pt"><span class="ln">56</span><span class="cnt">1&times;</span>        r.str(&quot;route&quot;, &quot;/checkout&quot;);
+</span><span class="row pt"><span class="ln">57</span><span class="cnt">1&times;</span>        r.i64(&quot;ms&quot;, 1200);
+</span><span class="row pt"><span class="ln">58</span><span class="cnt">1&times;</span>        r.flag(&quot;retried&quot;, true);
+</span><span class="row ok"><span class="ln">59</span><span class="cnt">1&times;</span>        log.emit(#r);
+</span><span class="row pt"><span class="ln">60</span><span class="cnt">1&times;</span>        Assert.that(cap.count()).isEqualTo(before + 1);
+</span><span class="row ok"><span class="ln">61</span><span class="cnt">1&times;</span>        String line = cap.get(cap.count() - 1);
+</span><span class="row pt"><span class="ln">62</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;\&quot;route\&quot;:\&quot;/checkout\&quot;&quot;);
+</span><span class="row pt"><span class="ln">63</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;\&quot;ms\&quot;:1200&quot;);
+</span><span class="row pt"><span class="ln">64</span><span class="cnt">1&times;</span>        Assert.that(line).contains(&quot;\&quot;retried\&quot;:true&quot;);
+</span><span class="row ok"><span class="ln">65</span><span class="cnt">1&times;</span>        return;
+</span><span class="row "><span class="ln">66</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">67</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-selftest-TestMain-cajeta"><h3>dev/cajeta/logging/selftest/TestMain.cajeta</h3><div class="muted">100.0% lines &middot; 100.0% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging.selftest;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import dev.cajeta.unit.Runner;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> * Test entry: reflective discovery runs every `@Test` across the binary.
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * Returns 0 when all green, 1 on any failure — the build tool's `test`
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> * action turns that into the suite's pass/fail.
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span>public final class TestMain {
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span>    public static int32 run() {
+</span><span class="row ok"><span class="ln">12</span><span class="cnt">1&times;</span>        return Runner.runAll();
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span>}
+</span></pre></div></div>
+<div class="card" id="f-dev-cajeta-logging-TextEncoder-cajeta"><h3>dev/cajeta/logging/TextEncoder.cajeta</h3><div class="muted">100.0% lines &middot; 65.6% branches</div><div class="srcwrap"><pre class="src"><span class="row "><span class="ln">1</span><span class="cnt"></span>package dev.cajeta.logging;
+</span><span class="row "><span class="ln">2</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">3</span><span class="cnt"></span>import cajeta.lang.Int64;
+</span><span class="row "><span class="ln">4</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">5</span><span class="cnt"></span>/**
+</span><span class="row "><span class="ln">6</span><span class="cnt"></span> * Human-readable console line: `&lt;ts&gt; &lt;LEVEL&gt; &lt;logger&gt; &lt;msg&gt;  &lt;k=v …&gt;`. The
+</span><span class="row "><span class="ln">7</span><span class="cnt"></span> * level is padded to a fixed width for column alignment; structured fields
+</span><span class="row "><span class="ln">8</span><span class="cnt"></span> * trail as `k=v` (quoted only when needed) so nothing is lost relative to
+</span><span class="row "><span class="ln">9</span><span class="cnt"></span> * JSONL. Timestamp is epoch millis for now (ISO-8601 rendering is a later
+</span><span class="row "><span class="ln">10</span><span class="cnt"></span> * pass); message text is emitted raw. TTY-gated ANSI color and a configurable
+</span><span class="row "><span class="ln">11</span><span class="cnt"></span> * layout pattern are Phase-3 sink concerns, not the encoder's.
+</span><span class="row "><span class="ln">12</span><span class="cnt"></span> *
+</span><span class="row "><span class="ln">13</span><span class="cnt"></span> * The `LogEncoder` under `--profile=dev` (human-readable console output).
+</span><span class="row "><span class="ln">14</span><span class="cnt"></span> */
+</span><span class="row "><span class="ln">15</span><span class="cnt"></span>@Component @Profile(&quot;dev&quot;)
+</span><span class="row "><span class="ln">16</span><span class="cnt"></span>public final class TextEncoder implements LogEncoder {
+</span><span class="row "><span class="ln">17</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">18</span><span class="cnt"></span>    public TextEncoder() {
+</span><span class="row "><span class="ln">19</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">20</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">21</span><span class="cnt"></span>    public #int8[] encode(LogRecord r) {
+</span><span class="row pt"><span class="ln">22</span><span class="cnt">3&times;</span>        String line = Int64.of(r.ts).toString()
+</span><span class="row "><span class="ln">23</span><span class="cnt"></span>            + &quot; &quot; + TextEncoder.padLevel(Levels.name(r.level))
+</span><span class="row "><span class="ln">24</span><span class="cnt"></span>            + &quot; &quot; + r.logger
+</span><span class="row "><span class="ln">25</span><span class="cnt"></span>            + &quot; &quot; + r.msg;
+</span><span class="row "><span class="ln">26</span><span class="cnt"></span>
+</span><span class="row ok"><span class="ln">27</span><span class="cnt">3&times;</span>        int32 n = r.fields.count();
+</span><span class="row ok"><span class="ln">28</span><span class="cnt">3&times;</span>        if (n &gt; 0) {
+</span><span class="row "><span class="ln">29</span><span class="cnt"></span>            // A second space sets the field tail off from the message.
+</span><span class="row pt"><span class="ln">30</span><span class="cnt">2&times;</span>            line = line + &quot; &quot;;
+</span><span class="row ok"><span class="ln">31</span><span class="cnt">2&times;</span>            int32 i = 0;
+</span><span class="row ok"><span class="ln">32</span><span class="cnt">2&times;</span>            while (i &lt; n) {
+</span><span class="row ok"><span class="ln">33</span><span class="cnt">3&times;</span>                LogField f = r.fields.get(i);
+</span><span class="row pt"><span class="ln">34</span><span class="cnt">3&times;</span>                line = line + &quot; &quot; + f.key + &quot;=&quot; + LogFmt.fieldValue(f);
+</span><span class="row ok"><span class="ln">35</span><span class="cnt">3&times;</span>                i = i + 1;
+</span><span class="row "><span class="ln">36</span><span class="cnt"></span>            }
+</span><span class="row "><span class="ln">37</span><span class="cnt"></span>        }
+</span><span class="row "><span class="ln">38</span><span class="cnt"></span>
+</span><span class="row ok"><span class="ln">39</span><span class="cnt">3&times;</span>        return LogFmt.bytesOf(line);
+</span><span class="row "><span class="ln">40</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">41</span><span class="cnt"></span>
+</span><span class="row "><span class="ln">42</span><span class="cnt"></span>    /** Right-pad a level name to width 5 (the longest: TRACE/DEBUG/ERROR). */
+</span><span class="row "><span class="ln">43</span><span class="cnt"></span>    static #String padLevel(String name) {
+</span><span class="row pt"><span class="ln">44</span><span class="cnt">3&times;</span>        String s = &quot;&quot; + name;
+</span><span class="row ok"><span class="ln">45</span><span class="cnt">3&times;</span>        while (s.byteLength() &lt; 5) {
+</span><span class="row pt"><span class="ln">46</span><span class="cnt">3&times;</span>            s = s + &quot; &quot;;
+</span><span class="row "><span class="ln">47</span><span class="cnt"></span>        }
+</span><span class="row ok"><span class="ln">48</span><span class="cnt">3&times;</span>        return s;
+</span><span class="row "><span class="ln">49</span><span class="cnt"></span>    }
+</span><span class="row "><span class="ln">50</span><span class="cnt"></span>}
+</span></pre></div></div>
+</main></body></html>
