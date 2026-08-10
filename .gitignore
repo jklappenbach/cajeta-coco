@@ -4,3 +4,6 @@
 .coco-lintd/
 .build-t/
 .cajeta/
+build/
+plugin/build/
+plugin/.cajeta/
