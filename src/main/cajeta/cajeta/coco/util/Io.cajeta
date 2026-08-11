@@ -72,6 +72,12 @@ public class Io {
         w.close();
     }
 
+    /** Write raw bytes to `path` (NUL-safe path; atomic-rename semantics). */
+    public static void writeBytes(String path, int8[] data, int32 len) {
+        String p #= Io.cstr(path);
+        File.writeAllBytes(p, data, len);
+    }
+
     /**
      * Append `text` to `path`, creating it when absent. Used to accumulate one
      * probe map across a whole project's modules, which are instrumented one

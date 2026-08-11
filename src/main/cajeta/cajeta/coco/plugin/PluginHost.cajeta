@@ -79,84 +79,13 @@ public class PluginHost {
             PluginHost.resultError("instrument: config must set 'src' and 'entry'");
             return;
         }
-        if (r.cocoHome.byteLength() == 0) {
-            PluginHost.resultError("instrument: config must set 'coco-home' (the cajeta-coco checkout)");
-            return;
+        // The pipeline runs fully in-engine (Pipeline): toolchain paths come
+        // from the request context, the probe runtime from the plugin's own
+        // dependency archive. `coco-home` is accepted but ignored — the
+        // checkout-delegation era is over.
+        if (Pipeline.run(r)) {
+            PluginHost.resultOk();
         }
-
-        PluginHost.log("coco: instrumenting " + r.src + " (entry " + r.entry + ")");
-
-        // argv: <coco-home>/bin/coco run --src S --entry E [--classpath C]
-        // [--profile P] [--exclude X]* --out O
-        int32 argc = 8;
-        if (r.classpath.byteLength() > 0) { argc = argc + 2; }
-        if (r.profile.byteLength() > 0) { argc = argc + 2; }
-        argc = argc + r.excludes.count() * 2;
-
-        String[] argv = heap String[argc];
-        int32 i = 0;
-        argv[i] #= r.cocoHome + "/bin/coco";    i = i + 1;
-        argv[i] #= "run";                       i = i + 1;
-        argv[i] #= "--src";                     i = i + 1;
-        argv[i] #= r.src.substring(0, r.src.byteLength());   i = i + 1;
-        argv[i] #= "--entry";                   i = i + 1;
-        argv[i] #= r.entry.substring(0, r.entry.byteLength()); i = i + 1;
-        if (r.classpath.byteLength() > 0) {
-            argv[i] #= "--classpath";           i = i + 1;
-            argv[i] #= r.classpath.substring(0, r.classpath.byteLength()); i = i + 1;
-        }
-        if (r.profile.byteLength() > 0) {
-            argv[i] #= "--profile";             i = i + 1;
-            argv[i] #= r.profile.substring(0, r.profile.byteLength()); i = i + 1;
-        }
-        int32 x = 0;
-        while (x < r.excludes.count()) {
-            argv[i] #= "--exclude";             i = i + 1;
-            String ex = r.excludes.get(x);
-            argv[i] #= ex.substring(0, ex.byteLength()); i = i + 1;
-            x = x + 1;
-        }
-        argv[i] #= "--out";                     i = i + 1;
-        argv[i] #= r.out.substring(0, r.out.byteLength());
-
-        Command cmd = heap Command(#argv);
-        cmd.captureStdout();
-        cmd.captureStderr();
-        String wd #= r.workdir.substring(0, r.workdir.byteLength());
-        cmd.workingDir(#wd);
-
-        ProcessResult res = cmd.run();
-        if (res.launched() == false) {
-            PluginHost.resultError("instrument: failed to launch bin/coco (check coco-home)");
-            return;
-        }
-
-        int8[] outBytes = res.stdout();
-        String outText #= "";
-        if (outBytes != null) {
-            String tmp #= PluginHost.bytesToString(outBytes, (int32) outBytes.count());
-            outText #= tmp;
-        }
-        PluginHost.forwardCocoLog(outText);
-
-        if (res.code() != 0) {
-            PluginHost.resultError("instrument: coco run failed (exit "
-                                   + Text.fromInt((int64) res.code()) + ")");
-            return;
-        }
-
-        // The measured suite's exit code rides in the driver's transcript.
-        int64 suiteExit = Text.intAfter(outText, "coco: exit ");
-        if (suiteExit != 0) {
-            PluginHost.resultError("tests failed under instrumentation (suite exit "
-                                   + Text.fromInt(suiteExit) + ")");
-            return;
-        }
-
-        PluginHost.output("path", r.out + "/measured");
-        PluginHost.output("sites", r.out + "/sites.tsv");
-        PluginHost.output("report", r.out + "/coverage.html");
-        PluginHost.resultOk();
     }
 
     // ── report ─────────────────────────────────────────────────

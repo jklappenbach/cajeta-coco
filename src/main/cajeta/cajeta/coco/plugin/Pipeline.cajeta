@@ -1,0 +1,653 @@
+package cajeta.coco.plugin;
+
+import cajeta.coco.analysis.Attribution;
+import cajeta.coco.ir.IdGen;
+import cajeta.coco.ir.Instrumenter;
+import cajeta.coco.model.HitProfile;
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteTable;
+import cajeta.coco.util.Io;
+import cajeta.coco.util.Text;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+import cajeta.process.Command;
+import cajeta.process.ProcessResult;
+
+/**
+ * The measured-build pipeline, fully in-engine — what used to be
+ * `bin/coco run`'s bash orchestration, so the plugin's `.cja` is
+ * self-contained: no checkout, no `coco-home`, no machine-specific paths.
+ * Toolchain locations arrive in the protocol request (`context.toolchain`),
+ * and the probe runtime is extracted from the plugin's own dependency
+ * archive (`context.plugin.deps`), not from an install location.
+ *
+ * ## The two enumerations that used to need a shell
+ *
+ * `cajeta.io.file` has no directory walk in v1; the driver used `find`.
+ * In-engine, both listings are DERIVED instead of walked:
+ *
+ * - **Modules**: the `--emit-xref` document's declarations name every
+ *   compiled class's source file — each unique `.cajeta` maps to the
+ *   emitted `.ll`, confirmed by a read. No walk.
+ * - **Classpath objects**: the reference pass compiles archive classes to
+ *   dotted-name objects; `cajeta archive list` of each classpath entry
+ *   names exactly those classes. No walk.
+ *
+ * Steps mirror the driver: two front-end passes -> instrument (in-memory,
+ * one id space) -> entry wiring -> attribution hook (archive bitcode
+ * rewrite) -> llc -> link -> run -> merge + attribution. Reporting stays
+ * in the `report` action.
+ */
+public class Pipeline {
+
+    /** Run the full instrument pipeline. False = failed (already reported). */
+    public static boolean run(Request r) {
+        String base #= r.workdir + "/" + r.out;
+
+        // Directories + stale per-test profiles, via one shell spawn — the
+        // single place a shell still earns its keep (mkdir -p and a glob).
+        Pipeline.shell(r, "mkdir -p '" + base + "/ir' '" + base + "/obj' '"
+                       + base + "/run' '" + base + "/exe' '" + base
+                       + "/rt' && rm -f '" + base + "'/run/coco-test-*.profile '"
+                       + base + "'/run/coco.profile '" + base
+                       + "'/run/coco.merged.profile");
+
+        // [1] Two front-end passes.
+        PluginHost.log("coco: [1/6] reference pass (--emit=exe, tree-shake off)");
+        ArrayList<String> a1 #= heap ArrayList<String>();
+        a1.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
+        a1.add("--emit=exe");
+        a1.add("--tree-shake=off");
+        Pipeline.addFlags(a1, r);
+        a1.add("-o");
+        a1.add(base + "/exe/reference");
+        a1.add(r.entry.substring(0, r.entry.byteLength()));
+        a1.add(r.src.substring(0, r.src.byteLength()));
+        a1.add(base + "/exe");
+        if (Pipeline.spawnOrFail(r, a1, "reference pass") == false) { return false; }
+
+        PluginHost.log("coco: [2/6] IR + xref pass (--emit=ir)");
+        ArrayList<String> a2 #= heap ArrayList<String>();
+        a2.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
+        a2.add("--emit=ir");
+        a2.add("--emit-xref=" + base + "/xref.json");
+        Pipeline.addFlags(a2, r);
+        a2.add(r.entry.substring(0, r.entry.byteLength()));
+        a2.add(r.src.substring(0, r.src.byteLength()));
+        a2.add(base + "/ir");
+        if (Pipeline.spawnOrFail(r, a2, "IR pass") == false) { return false; }
+
+        // [2] Modules from the xref; instrument in-memory, one id space.
+        ArrayList<String> modules #= Pipeline.moduleFiles(base, r);
+        if (modules.count() == 0) {
+            PluginHost.resultError("instrument: no instrumentable modules found");
+            return false;
+        }
+        PluginHost.log("coco: [3/6] instrumenting "
+                       + Text.fromInt((int64) modules.count()) + " modules");
+
+        IdGen ids = heap IdGen();
+        ArrayList<Site> sites #= heap ArrayList<Site>();
+        int32 mi = 0;
+        while (mi < modules.count()) {
+            String rel = modules.get(mi);
+            String llPath #= base + "/ir/" + rel;
+            String text #= Io.readAll(llPath);
+            String outIr #= Instrumenter.instrument(text, sites, ids);
+            Io.writeAll(llPath, outIr);
+            mi = mi + 1;
+        }
+        String encoded #= SiteTable.encode(sites);
+        Io.writeAll(base + "/sites.tsv", encoded);
+
+        // [3] Entry wiring: table sizing + exit dump.
+        int32 lastDot = Pipeline.lastDot(r.entry);
+        if (lastDot <= 0) {
+            PluginHost.resultError("instrument: entry must be pkg.Class.method");
+            return false;
+        }
+        String entryClass #= r.entry.substring(0, lastDot);
+        String entrySym #= entryClass + "::"
+            + r.entry.substring(lastDot + 1, r.entry.byteLength());
+        String entryRel #= Pipeline.dotsToPath(entryClass) + ".ll";
+        String entryPath #= base + "/ir/" + entryRel;
+        String entryText #= Io.readAll(entryPath);
+        if (entryText.byteLength() == 0) {
+            PluginHost.resultError("instrument: entry module not found: " + entryRel);
+            return false;
+        }
+        String wired #= Instrumenter.instrumentEntry(entryText, entrySym, ids.count());
+        Io.writeAll(entryPath, wired);
+
+        // [3b] Attribution hook: patch cajeta-unit's Runner from whichever
+        // classpath archive carries it.
+        boolean attribution = false;
+        String unitCja #= Pipeline.archiveWith(r, "dev/cajeta/unit/Runner.bc");
+        if (unitCja.byteLength() > 0) {
+            PluginHost.log("coco: [3b] injecting per-test attribution hook");
+            attribution = Pipeline.hookRunner(r, base, unitCja);
+        }
+
+        // [4] Lower instrumented modules + the probe runtime from the
+        // plugin's own dependency archive.
+        PluginHost.log("coco: [4/6] lowering to objects");
+        ArrayList<String> objs #= heap ArrayList<String>();
+        objs.add(base + "/exe/cajeta.runtime.__stdlib__.o");
+        mi = 0;
+        while (mi < modules.count()) {
+            String rel = modules.get(mi);
+            String obj #= base + "/obj/" + Pipeline.flatten(rel) + ".o";
+            ArrayList<String> lc #= heap ArrayList<String>();
+            lc.add(r.llcBin.substring(0, r.llcBin.byteLength()));
+            lc.add("-filetype=obj");
+            lc.add("-relocation-model=pic");
+            lc.add(base + "/ir/" + rel);
+            lc.add("-o");
+            lc.add(obj.substring(0, obj.byteLength()));
+            if (Pipeline.spawnOrFail(r, lc, "llc " + rel) == false) { return false; }
+            objs.add(#obj);
+            mi = mi + 1;
+        }
+        if (Pipeline.lowerRuntime(r, base, objs) == false) { return false; }
+        if (attribution) {
+            objs.add(base + "/obj/dev_cajeta_unit_Runner.ll.o");
+        }
+
+        // Classpath classes the reference pass compiled (dotted-name
+        // objects), minus the hooked Runner.
+        Pipeline.classpathObjects(r, base, attribution, objs);
+
+        // [5] Link.
+        PluginHost.log("coco: [5/6] linking");
+        ArrayList<String> link #= heap ArrayList<String>();
+        link.add(r.ccBin.substring(0, r.ccBin.byteLength()));
+        int32 oi = 0;
+        while (oi < objs.count()) {
+            String o = objs.get(oi);
+            link.add(o.substring(0, o.byteLength()));
+            oi = oi + 1;
+        }
+        link.add(base + "/exe/__cajeta_tls.o");
+        link.add(base + "/exe/__cajeta_xpu_optix_stub.c");
+        link.add("-o");
+        link.add(base + "/measured");
+        link.add("-lssl");
+        link.add("-lcrypto");
+        link.add("-lpthread");
+        link.add("-lm");
+        link.add("-ldl");
+        if (Pipeline.spawnOrFail(r, link, "link") == false) { return false; }
+
+        // [6] Run the suite from the run dir (profiles land in cwd).
+        PluginHost.log("coco: [6/6] running the instrumented suite");
+        ArrayList<String> runv #= heap ArrayList<String>();
+        // Relative to the run cwd, not to `base`: the build tool's workdir
+        // is "." (its documented best-effort), so a base-composed path would
+        // resolve from the wrong directory once the child chdirs.
+        runv.add("../measured");
+        ProcessResult rr = Pipeline.spawnIn(runv, base + "/run");
+        if (rr.launched() == false) {
+            PluginHost.resultError("instrument: measured binary failed to launch");
+            return false;
+        }
+        Pipeline.forward(rr);
+        int64 suiteExit = (int64) rr.code();
+
+        // Merge per-test deltas + residue; render attribution.
+        Pipeline.mergeProfiles(base, encoded);
+
+        if (suiteExit != 0) {
+            PluginHost.resultError("tests failed under instrumentation (suite exit "
+                                   + Text.fromInt(suiteExit) + ")");
+            return false;
+        }
+
+        PluginHost.output("path", r.out + "/measured");
+        PluginHost.output("sites", r.out + "/sites.tsv");
+        return true;
+    }
+
+    // ── module discovery (derived, not walked) ─────────────────
+
+    /**
+     * Relative `.ll` paths of every instrumentable module: unique source
+     * files from the xref's declarations, filtered (probe runtime never;
+     * exclude fragments), confirmed by the emitted file actually existing.
+     */
+    static #ArrayList<String> moduleFiles(String base, Request r) {
+        String xrefText #= Io.readAll(base + "/xref.json");
+        ArrayList<String> files #= Pipeline.declFiles(xrefText);
+        ArrayList<String> out #= heap ArrayList<String>();
+        int32 i = 0;
+        while (i < files.count()) {
+            String f = files.get(i);
+            boolean keep = f.endsWith(".cajeta");
+            if (keep && Text.containsFrom(f, "cajeta/coco/rt/", 0)) { keep = false; }
+            int32 e = 0;
+            while (keep && e < r.excludes.count()) {
+                if (Text.containsFrom(f, r.excludes.get(e), 0)) { keep = false; }
+                e = e + 1;
+            }
+            if (keep) {
+                String rel #= f.substring(0, f.byteLength() - 7) + ".ll";
+                String probe #= Io.readAll(base + "/ir/" + rel);
+                if (probe.byteLength() > 0) {
+                    out.add(#rel);
+                }
+            }
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /** Unique declaration `file` values from an xref document. */
+    static #ArrayList<String> declFiles(String xrefText) {
+        ArrayList<String> out #= heap ArrayList<String>();
+        // Cheap streaming scan over the raw text for `"file":"..."` — every
+        // declarations/calls record carries one; uniqueness dedupes.
+        int64 at = Text.indexOfFrom(xrefText, "\"file\": \"", 0);
+        while (at >= 0) {
+            int64 s = at + 9;
+            int64 e = Text.indexOfFrom(xrefText, "\"", s);
+            if (e < 0) { at = -1; }
+            else {
+                String f #= xrefText.substring((int32) s, (int32) e);
+                boolean seen = false;
+                int32 k = 0;
+                while (k < out.count()) {
+                    if (out.get(k).equals(f)) { seen = true; k = out.count(); }
+                    else { k = k + 1; }
+                }
+                if (seen == false) { out.add(#f); }
+                at = Text.indexOfFrom(xrefText, "\"file\": \"", e);
+            }
+        }
+        return #out;
+    }
+
+    // ── attribution hook ───────────────────────────────────────
+
+    /** First comma-separated classpath entry whose archive lists `entry`. */
+    static #String archiveWith(Request r, String entry) {
+        int64 start = 0;
+        int32 n = r.classpath.byteLength();
+        while (start < n) {
+            int64 comma = Text.indexOfFrom(r.classpath, ",", start);
+            int64 end = comma;
+            if (end < 0) { end = n; }
+            String cja #= r.classpath.substring((int32) start, (int32) end);
+            ArrayList<String> lv #= heap ArrayList<String>();
+            lv.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
+            lv.add("archive");
+            lv.add("list");
+            lv.add(cja.substring(0, cja.byteLength()));
+            ProcessResult res = Pipeline.spawnIn(lv, r.workdir);
+            if (res.launched() && res.code() == 0) {
+                String listing #= Pipeline.stdoutOf(res);
+                if (Text.containsFrom(listing, entry, 0)) {
+                    return #cja;
+                }
+            }
+            start = end + 1;
+        }
+        return "";
+    }
+
+    /** Extract, disassemble, patch and lower cajeta-unit's Runner. */
+    static boolean hookRunner(Request r, String base, String unitCja) {
+        // archive cat writes the bitcode to stdout; capture and persist.
+        ArrayList<String> cat #= heap ArrayList<String>();
+        cat.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
+        cat.add("archive");
+        cat.add("cat");
+        cat.add(unitCja.substring(0, unitCja.byteLength()));
+        cat.add("dev/cajeta/unit/Runner.bc");
+        ProcessResult res = Pipeline.spawnIn(cat, r.workdir);
+        if (res.launched() == false || res.code() != 0) { return false; }
+        int8[] bc = res.stdout();
+        if (bc == null) { return false; }
+        Io.writeBytes(base + "/rt/Runner.bc", bc, (int32) bc.count());
+
+        ArrayList<String> dis #= heap ArrayList<String>();
+        dis.add(r.llvmDisBin.substring(0, r.llvmDisBin.byteLength()));
+        dis.add(base + "/rt/Runner.bc");
+        dis.add("-o");
+        dis.add(base + "/rt/Runner.ll");
+        if (Pipeline.spawnOrFail(r, dis, "llvm-dis Runner") == false) { return false; }
+
+        String ll #= Io.readAll(base + "/rt/Runner.ll");
+        String hooked #= Instrumenter.hookTests(ll);
+        if (hooked.byteLength() == 0) {
+            PluginHost.log("coco: attribution hook not applicable; continuing without");
+            return false;
+        }
+        Io.writeAll(base + "/rt/Runner.hooked.ll", hooked);
+
+        ArrayList<String> lc #= heap ArrayList<String>();
+        lc.add(r.llcBin.substring(0, r.llcBin.byteLength()));
+        lc.add("-filetype=obj");
+        lc.add("-relocation-model=pic");
+        lc.add(base + "/rt/Runner.hooked.ll");
+        lc.add("-o");
+        lc.add(base + "/obj/dev_cajeta_unit_Runner.ll.o");
+        return Pipeline.spawnOrFail(r, lc, "llc hooked Runner");
+    }
+
+    // ── probe runtime from the plugin's own archive ────────────
+
+    /**
+     * Extract Probe/ProbeDump bitcode from whichever plugin dependency
+     * archive carries it, and lower it. Identified by CONTENT, not by
+     * name: the artifact cache stores content-addressed paths
+     * (`<sha256>.cja`), so a package's name never appears in its path.
+     */
+    static boolean lowerRuntime(Request r, String base, ArrayList<String> objs) {
+        String cocoCja #= "";
+        int32 i = 0;
+        while (i < r.pluginDeps.count() && cocoCja.byteLength() == 0) {
+            String d = r.pluginDeps.get(i);
+            ArrayList<String> lv #= heap ArrayList<String>();
+            lv.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
+            lv.add("archive");
+            lv.add("list");
+            lv.add(d.substring(0, d.byteLength()));
+            ProcessResult res = Pipeline.spawnIn(lv, r.workdir);
+            if (res.launched() && res.code() == 0) {
+                String listing #= Pipeline.stdoutOf(res);
+                if (Text.containsFrom(listing, "cajeta/coco/rt/Probe.bc", 0)) {
+                    cocoCja #= d.substring(0, d.byteLength());
+                }
+            }
+            i = i + 1;
+        }
+        if (cocoCja.byteLength() == 0) {
+            PluginHost.resultError("instrument: no plugin dependency archive carries the probe runtime (cajeta/coco/rt/Probe.bc)");
+            return false;
+        }
+
+        int32 k = 0;
+        while (k < 2) {
+            String cls #= "Probe";
+            if (k == 1) { cls #= "ProbeDump"; }
+            ArrayList<String> cat #= heap ArrayList<String>();
+            cat.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
+            cat.add("archive");
+            cat.add("cat");
+            cat.add(cocoCja.substring(0, cocoCja.byteLength()));
+            cat.add("cajeta/coco/rt/" + cls + ".bc");
+            ProcessResult res = Pipeline.spawnIn(cat, r.workdir);
+            if (res.launched() == false || res.code() != 0) {
+                PluginHost.resultError("instrument: cannot extract probe runtime ("
+                                       + cls + ") from " + cocoCja);
+                return false;
+            }
+            int8[] bc = res.stdout();
+            if (bc == null) { return false; }
+            Io.writeBytes(base + "/rt/" + cls + ".bc", bc, (int32) bc.count());
+
+            String obj #= base + "/obj/coco_rt_" + cls + ".o";
+            ArrayList<String> lc #= heap ArrayList<String>();
+            lc.add(r.llcBin.substring(0, r.llcBin.byteLength()));
+            lc.add("-filetype=obj");
+            lc.add("-relocation-model=pic");
+            lc.add(base + "/rt/" + cls + ".bc");
+            lc.add("-o");
+            lc.add(obj.substring(0, obj.byteLength()));
+            if (Pipeline.spawnOrFail(r, lc, "llc " + cls) == false) { return false; }
+            objs.add(#obj);
+            k = k + 1;
+        }
+        return true;
+    }
+
+    // ── classpath objects from the reference pass ──────────────
+
+    /**
+     * The reference pass compiled every classpath archive class to a
+     * dotted-name object (`exe/dev.cajeta.unit.Runner.o`); the archives'
+     * own listings say exactly which. Skip the Runner when the hooked
+     * object replaces it.
+     */
+    static void classpathObjects(Request r, String base, boolean hooked,
+                                 ArrayList<String> objs) {
+        int64 start = 0;
+        int32 n = r.classpath.byteLength();
+        while (start < n) {
+            int64 comma = Text.indexOfFrom(r.classpath, ",", start);
+            int64 end = comma;
+            if (end < 0) { end = n; }
+            String cja #= r.classpath.substring((int32) start, (int32) end);
+            ArrayList<String> lv #= heap ArrayList<String>();
+            lv.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
+            lv.add("archive");
+            lv.add("list");
+            lv.add(cja.substring(0, cja.byteLength()));
+            ProcessResult res = Pipeline.spawnIn(lv, r.workdir);
+            if (res.launched() && res.code() == 0) {
+                String listing #= Pipeline.stdoutOf(res);
+                ArrayList<String> lines #= Text.splitLines(listing);
+                int32 li = 0;
+                while (li < lines.count()) {
+                    String line = lines.get(li);
+                    if (line.startsWith("class_bitcode")) {
+                        // last whitespace-separated column is the entry path
+                        String path #= Pipeline.lastColumn(line);
+                        if (path.endsWith(".bc")) {
+                            String cls #= Pipeline.pathToDots(
+                                path.substring(0, path.byteLength() - 3));
+                            boolean skip = false;
+                            if (hooked && cls.equals("dev.cajeta.unit.Runner")) {
+                                skip = true;
+                            }
+                            if (skip == false) {
+                                objs.add(base + "/exe/" + cls + ".o");
+                            }
+                        }
+                    }
+                    li = li + 1;
+                }
+            }
+            start = end + 1;
+        }
+    }
+
+    // ── merge + attribution ────────────────────────────────────
+
+    static void mergeProfiles(String base, String sitesEncoded) {
+        // Per-test dumps are sequentially numbered; probe until missing.
+        ArrayList<String> testTexts #= heap ArrayList<String>();
+        int32 k = 0;
+        boolean more = true;
+        while (more) {
+            String name #= base + "/run/coco-test-" + Pipeline.pad4(k) + ".profile";
+            String text #= Io.readAll(name);
+            if (text.byteLength() == 0) { more = false; }
+            else {
+                testTexts.add(#text);
+                k = k + 1;
+            }
+        }
+        String residue #= Io.readAll(base + "/run/coco.profile");
+
+        if (testTexts.count() == 0) {
+            // No attribution hook ran; the exit dump is the aggregate.
+            return;
+        }
+        PluginHost.log("coco: merging " + Text.fromInt((int64) testTexts.count())
+                       + " per-test profiles");
+
+        HitProfile total #= HitProfile.decode(residue, "all");
+        ArrayList<String> labels #= heap ArrayList<String>();
+        ArrayList<HitProfile> profiles #= heap ArrayList<HitProfile>();
+        int32 i = 0;
+        while (i < testTexts.count()) {
+            String text = testTexts.get(i);
+            String label #= HitProfile.labelOf(text);
+            if (label.byteLength() == 0) { label #= "t" + Text.fromInt((int64) i); }
+            HitProfile p #= HitProfile.decode(text, label.substring(0, label.byteLength()));
+            total.merge(p);
+            labels.add(#label);
+            profiles.add(#p);
+            i = i + 1;
+        }
+        String merged #= total.encode();
+        Io.writeAll(base + "/run/coco.merged.profile", merged);
+
+        ArrayList<Site> sites #= SiteTable.decode(sitesEncoded);
+        String attr #= Attribution.render(sites, labels, profiles);
+        Io.writeAll(base + "/attribution.tsv", attr);
+        PluginHost.output("attribution", "attribution written");
+    }
+
+    // ── spawn helpers ──────────────────────────────────────────
+
+    static #ProcessResult spawnIn(ArrayList<String> args, String cwd) {
+        String[] argv = heap String[args.count()];
+        int32 i = 0;
+        while (i < args.count()) {
+            String a = args.get(i);
+            argv[i] #= a.substring(0, a.byteLength());
+            i = i + 1;
+        }
+        Command c = heap Command(#argv);
+        c.captureStdout();
+        c.captureStderr();
+        String w #= cwd.substring(0, cwd.byteLength());
+        c.workingDir(#w);
+        return c.run();
+    }
+
+    /** Spawn; on failure emit a result error with the stderr tail. */
+    static boolean spawnOrFail(Request r, ArrayList<String> args, String what) {
+        ProcessResult res = Pipeline.spawnIn(args, r.workdir);
+        if (res.launched() == false) {
+            PluginHost.resultError("instrument: cannot launch " + what);
+            return false;
+        }
+        if (res.code() != 0) {
+            String errText #= Pipeline.stderrOf(res);
+            int32 n = errText.byteLength();
+            int32 from = 0;
+            if (n > 700) { from = n - 700; }
+            PluginHost.resultError("instrument: " + what + " failed: "
+                                   + errText.substring(from, n));
+            return false;
+        }
+        return true;
+    }
+
+    static void forward(ProcessResult res) {
+        String text #= Pipeline.stdoutOf(res);
+        ArrayList<String> lines #= Text.splitLines(text);
+        int32 i = 0;
+        while (i < lines.count()) {
+            String l = lines.get(i);
+            if (l.startsWith("Tests:")) { PluginHost.log(l); }
+            i = i + 1;
+        }
+    }
+
+    static #String stdoutOf(ProcessResult res) {
+        int8[] b = res.stdout();
+        if (b == null) { return ""; }
+        return PluginHost.bytesToString(b, (int32) b.count());
+    }
+
+    static #String stderrOf(ProcessResult res) {
+        int8[] b = res.stderr();
+        if (b == null) { return ""; }
+        return PluginHost.bytesToString(b, (int32) b.count());
+    }
+
+    static void shell(Request r, String script) {
+        ArrayList<String> sh #= heap ArrayList<String>();
+        sh.add("/bin/sh");
+        sh.add("-c");
+        sh.add(script.substring(0, script.byteLength()));
+        ProcessResult res = Pipeline.spawnIn(sh, r.workdir);
+        if (res.launched() == false) {
+            PluginHost.log("coco: warning — shell helper failed to launch");
+        }
+    }
+
+    /** Shared flags for both front-end passes (DI must match). */
+    static void addFlags(ArrayList<String> args, Request r) {
+        if (r.classpath.byteLength() > 0) {
+            args.add("--classpath=" + r.classpath);
+        }
+        if (r.profile.byteLength() > 0) {
+            args.add("--profile=" + r.profile);
+        }
+    }
+
+    // ── small string utilities ─────────────────────────────────
+
+    static int32 lastDot(String s) {
+        int32 at = -1;
+        int32 i = 0;
+        while (i < s.byteLength()) {
+            if (s.byteAt(i) == 46) { at = i; }
+            i = i + 1;
+        }
+        return at;
+    }
+
+    static #String dotsToPath(String s) {
+        StringBuilder sb = stack StringBuilder();
+        int32 i = 0;
+        while (i < s.byteLength()) {
+            if (s.byteAt(i) == 46) { sb.append("/"); }
+            else { sb.append(s.substring(i, i + 1)); }
+            i = i + 1;
+        }
+        return sb.toString();
+    }
+
+    static #String pathToDots(String s) {
+        StringBuilder sb = stack StringBuilder();
+        int32 i = 0;
+        while (i < s.byteLength()) {
+            if (s.byteAt(i) == 47) { sb.append("."); }
+            else { sb.append(s.substring(i, i + 1)); }
+            i = i + 1;
+        }
+        return sb.toString();
+    }
+
+    static #String flatten(String s) {
+        StringBuilder sb = stack StringBuilder();
+        int32 i = 0;
+        while (i < s.byteLength()) {
+            if (s.byteAt(i) == 47) { sb.append("_"); }
+            else { sb.append(s.substring(i, i + 1)); }
+            i = i + 1;
+        }
+        return sb.toString();
+    }
+
+    static #String lastColumn(String line) {
+        int32 n = line.byteLength();
+        int32 end = n;
+        while (end > 0 && (line.byteAt(end - 1) == 32 || line.byteAt(end - 1) == 9)) {
+            end = end - 1;
+        }
+        int32 start = end;
+        while (start > 0 && line.byteAt(start - 1) != 32 && line.byteAt(start - 1) != 9) {
+            start = start - 1;
+        }
+        return line.substring(start, end);
+    }
+
+    static #String pad4(int32 v) {
+        int8[] outb #= heap int8[4];
+        int32 x = v;
+        int32 k = 3;
+        while (k >= 0) {
+            outb[k] = (int8) (48 + (x % 10));
+            x = x / 10;
+            k = k - 1;
+        }
+        return heap String(#outb, 4);
+    }
+}

@@ -30,6 +30,18 @@ public class Request {
     int64 min;
     ArrayList<String> excludes;
 
+    // context.toolchain — the build tool's own paths, so orchestration
+    // needs no machine configuration.
+    String cajetaBin;
+    String llcBin;
+    String llvmDisBin;
+    String ccBin;
+    // context.plugin — where this plugin's archive and its dependency
+    // closure landed, so bundled bitcode (the probe runtime) can be
+    // extracted from the packages it shipped in.
+    String pluginArtifact;
+    ArrayList<String> pluginDeps;
+
     Request() {
         this.action #= "";
         this.workdir #= ".";
@@ -41,18 +53,27 @@ public class Request {
         this.cocoHome #= "";
         this.min = 0;
         this.excludes #= heap ArrayList<String>();
+        this.cajetaBin #= "cajeta";
+        this.llcBin #= "llc";
+        this.llvmDisBin #= "llvm-dis";
+        this.ccBin #= "cc";
+        this.pluginArtifact #= "";
+        this.pluginDeps #= heap ArrayList<String>();
     }
 
     public static #Request parse(int8[] buf, int64 n) {
         Request r #= heap Request();
         JsonReader jr = stack JsonReader(buf, n);
 
-        // Sections: 0 top level, 1 params, 2 context. `inExclude` gates the
-        // string-array collection under params.exclude.
+        // Sections: 0 top level, 1 params, 2 context. `sub` narrows within
+        // context: 1 = toolchain, 2 = plugin. `inExclude` / `inDeps` gate
+        // the two string arrays.
         int32 depth = 0;
         int32 section = 0;
+        int32 sub = 0;
         int32 field = 0;
         boolean inExclude = false;
+        boolean inDeps = false;
 
         int32 t = (int32) jr.next();
         while (t != 9) {
@@ -60,8 +81,9 @@ public class Request {
                 depth = depth + 1;
             } else if (t == 1 || t == 3) {                // } or ]
                 depth = depth - 1;
-                if (t == 3) { inExclude = false; }
-                if (depth == 1) { section = 0; }
+                if (t == 3) { inExclude = false; inDeps = false; }
+                if (depth == 2) { sub = 0; }
+                if (depth == 1) { section = 0; sub = 0; }
             } else if (t == 4) {                          // KEY
                 String name #= jr.currentString();
                 if (depth == 1) {
@@ -81,6 +103,18 @@ public class Request {
                     else { field = 0; }
                 } else if (depth == 2 && section == 2) {
                     if (name.equals("workdir")) { field = 9; }
+                    else if (name.equals("toolchain")) { sub = 1; field = 0; }
+                    else if (name.equals("plugin")) { sub = 2; field = 0; }
+                    else { field = 0; }
+                } else if (depth == 3 && section == 2 && sub == 1) {
+                    if (name.equals("cajeta")) { field = 10; }
+                    else if (name.equals("llc")) { field = 11; }
+                    else if (name.equals("llvm-dis")) { field = 12; }
+                    else if (name.equals("cc")) { field = 13; }
+                    else { field = 0; }
+                } else if (depth == 3 && section == 2 && sub == 2) {
+                    if (name.equals("artifact")) { field = 14; }
+                    else if (name.equals("deps")) { inDeps = true; field = 0; }
                     else { field = 0; }
                 } else {
                     field = 0;
@@ -88,6 +122,8 @@ public class Request {
             } else if (t == 5) {                          // STRING
                 if (inExclude && depth == 3 && section == 1) {
                     r.excludes.add(jr.currentString());
+                } else if (inDeps && depth == 4 && section == 2) {
+                    r.pluginDeps.add(jr.currentString());
                 } else if (field == 1) { r.action #= jr.currentString(); }
                 else if (field == 2) { r.src #= jr.currentString(); }
                 else if (field == 3) { r.entry #= jr.currentString(); }
@@ -96,6 +132,11 @@ public class Request {
                 else if (field == 6) { r.out #= jr.currentString(); }
                 else if (field == 7) { r.cocoHome #= jr.currentString(); }
                 else if (field == 9) { r.workdir #= jr.currentString(); }
+                else if (field == 10) { r.cajetaBin #= jr.currentString(); }
+                else if (field == 11) { r.llcBin #= jr.currentString(); }
+                else if (field == 12) { r.llvmDisBin #= jr.currentString(); }
+                else if (field == 13) { r.ccBin #= jr.currentString(); }
+                else if (field == 14) { r.pluginArtifact #= jr.currentString(); }
                 field = 0;
             } else if (t == 6) {                          // NUMBER
                 if (field == 8) { r.min = jr.currentNumberAsInt64(); }
