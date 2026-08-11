@@ -4,7 +4,7 @@
 
     "details": {
         "name":               "dev.cajeta.coco",
-        "version":            "0.1.0",
+        "version":            "0.1.1",
         "description":        "Single-package buildtool sample",
         "license":            "Apache-2.0",
         "authors":            ["sample"],

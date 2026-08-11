@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# cajeta.coverage plugin binary: the build tool spawns this with the action
-# request on stdin (PluginRuntime protocol v1). All logic lives in the coco
-# engine's plugin-host verb; this wrapper only names it.
-exec /home/julian/code/cajeta/cajeta-coco/.build/coco-engine plugin-host
