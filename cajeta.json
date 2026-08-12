@@ -44,8 +44,7 @@
         // out when not in use; `lint` + `test` tasks fall back to
         // native-only actions.
         "plugins": {
-            "cajeta.lint.security": "1.0.*",
-            "cajeta.coverage":      "1.0.*"
+            "dev.cajeta.coverage":  "0.3.*"
         },
 
         "repositories": [

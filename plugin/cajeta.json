@@ -1,6 +1,6 @@
 {
     "details": {
-        "name":               "cajeta.coverage",
+        "name":               "dev.cajeta.coverage",
         "version":            "0.3.0",
         "description":        "Coverage instrumentation, reporting and gating for cajeta test tasks — backed by cajeta-coco",
         "license":            "Apache-2.0",
@@ -8,7 +8,7 @@
         "cajeta-lang-version": "1.0",
 
         "plugin": {
-            "id": "cajeta.coverage",
+            "id": "dev.cajeta.coverage",
             "main": "cajeta.coco.plugin.PluginHost.serve",
             "actions": [
                 "cajeta.coverage.instrument",

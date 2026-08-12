@@ -1,7 +1,7 @@
-package cajeta.coverage;
+package dev.cajeta.coverage;
 
 /**
- * Marker class for the cajeta.coverage plugin package.
+ * Marker class for the dev.cajeta.coverage plugin package.
  *
  * The package's real machinery is the sidecar manifest's plugin block: the
  * build tool spawns `details.plugin.binary` (the coco engine's plugin-host)
