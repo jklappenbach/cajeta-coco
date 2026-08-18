@@ -1,0 +1,42 @@
+package cajeta.coco.model;
+
+import cajeta.error.RecoverableException;
+import cajeta.lang.String;
+
+/**
+ * Thrown when a coco artifact does not conform to the format version this build
+ * reads — a wrong or missing header, a malformed row, or an unrecognised
+ * enumerated value.
+ *
+ * ## Why refusing beats coping
+ *
+ * `sites.tsv` and the profile are a **published interface**, read by the
+ * IntelliJ plugin across a repo boundary on an independent release cycle. A
+ * reader that accepts a version it does not understand and parses on under old
+ * assumptions produces *confident, wrong coverage* — lines reported green that
+ * were never executed. That is strictly worse than a refusal, because nothing
+ * downstream can tell it happened.
+ *
+ * So every ambiguity here is an error, not a fallback. Previously `decode`
+ * matched the header with `startsWith("coco-sites")` (accepting `v2`, `v99`,
+ * anything), dropped short rows with a bare `f.count() >= 9`, and coerced any
+ * unrecognised site kind to `LINE`. All three silently degraded the result.
+ *
+ * A `RecoverableException`: catch it at the read boundary and reject the
+ * artifact rather than aborting the process.
+ *
+ * ```cajeta
+ * try {
+ *     ArrayList<Site> sites #= SiteTable.decode(text);
+ * } catch (CocoFormatException e) {
+ *     // artifact is from a different coco; re-run coverage
+ * }
+ * ```
+ */
+public class CocoFormatException extends RecoverableException {
+    /** Wrap a heap `#String` message; ownership transfers in, `cause` unset. */
+    public CocoFormatException(#String message) {
+        this.message = message;
+        this.cause = 0;
+    }
+}

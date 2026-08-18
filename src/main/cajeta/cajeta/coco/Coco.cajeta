@@ -196,8 +196,10 @@ public class Coco {
         String sitesPath = args[at + 3];
 
         IdGen ids = heap IdGen();
+        int64 baseId = 0;
         if (args.count() >= at + 5) {
-            ids.seed(Text.parseIntAt(args[at + 4], 0));
+            baseId = Text.parseIntAt(args[at + 4], 0);
+            ids.seed(baseId);
         }
 
         String text #= Io.readAll(inPath);
@@ -205,8 +207,16 @@ public class Coco {
         String outIr #= Instrumenter.instrument(text, sites, ids);
 
         Io.writeAll(outPath, outIr);
-        String encoded #= SiteTable.encode(sites);
-        Io.appendAll(sitesPath, encoded);
+        // sites.tsv is built by appending one module at a time, so the header
+        // belongs to the FIRST module only — a document carries exactly one, and
+        // decode refuses a repeat. base-id 0 identifies that first call.
+        if (baseId == 0) {
+            String encoded #= SiteTable.encode(sites);
+            Io.appendAll(sitesPath, encoded);
+        } else {
+            String encoded #= SiteTable.encodeRows(sites);
+            Io.appendAll(sitesPath, encoded);
+        }
 
         System.stdout.println("coco: instrumented " + inPath
                               + " sites=" + Text.fromInt((int64) sites.count())

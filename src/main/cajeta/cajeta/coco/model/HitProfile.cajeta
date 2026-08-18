@@ -15,6 +15,10 @@ import cajeta.lang.String;
  * reached this line", with no second instrumented run.
  */
 public class HitProfile {
+
+    /** The one format version this build reads and writes. */
+    static String HEADER = "coco-profile v1";
+
     int64[] counts;
     int64 capacity;
     /** Free-text label — the test name, for attribution. */
@@ -88,7 +92,8 @@ public class HitProfile {
     /** Serialize back to `coco-profile v1` (no test label — merged output). */
     public #String encode() {
         StringBuilder sb #= heap StringBuilder();
-        sb.append("coco-profile v1\nsize ");
+        sb.append(HitProfile.HEADER);
+        sb.append("\nsize ");
         sb.append(Text.fromInt(this.capacity));
         sb.append("\n");
         int64 i = 0;
@@ -114,6 +119,22 @@ public class HitProfile {
      */
     public static #HitProfile decode(String text, #String label) {
         ArrayList<String> lines #= Text.splitLines(text);
+
+        // Exact-version refusal, same contract as SiteTable: a profile from a
+        // future coco must not be read under v1 assumptions. Probe ids are
+        // positional against the site table, so a silently-misread profile
+        // attributes hits to the WRONG sites — green lines that never ran.
+        if (lines.count() < 1) {
+            throw heap CocoFormatException(
+                "coco-profile: empty document; expected header \"" + HitProfile.HEADER + "\"");
+        }
+        String header = lines.get(0);
+        if (header.equals(HitProfile.HEADER) == false) {
+            throw heap CocoFormatException(
+                "coco-profile: unsupported header \"" + header
+              + "\"; this build reads only \"" + HitProfile.HEADER + "\"");
+        }
+
         int64 size = 0;
         int32 i = 0;
         while (i < lines.count()) {

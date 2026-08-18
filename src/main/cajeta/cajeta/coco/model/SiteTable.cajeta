@@ -23,10 +23,28 @@ import cajeta.lang.StringBuilder;
  */
 public class SiteTable {
 
+    /** The one format version this build reads and writes. */
+    static String HEADER = "coco-sites v1";
+
+
     /** Render `sites` in the probe-map wire format. */
+    /**
+     * A COMPLETE `coco-sites v1` document: header plus every row. Use when
+     * writing a whole file. For appending a second module's rows to a file that
+     * already has a header, use {@link #encodeRows} — a document carries exactly
+     * one header, and `decode` refuses a repeat.
+     */
     public static #String encode(ArrayList<Site> sites) {
         StringBuilder sb = stack StringBuilder();
-        sb.append("coco-sites v1\n");
+        sb.append(SiteTable.HEADER);
+        sb.append("\n");
+        sb.append(SiteTable.encodeRows(sites));
+        return sb.toString();
+    }
+
+    /** The rows alone, no header — for appending to an open document. */
+    public static #String encodeRows(ArrayList<Site> sites) {
+        StringBuilder sb = stack StringBuilder();
         int32 i = 0;
         while (i < sites.count()) {
             Site s = sites.get(i);
@@ -54,27 +72,56 @@ public class SiteTable {
     }
 
     /** Parse the probe-map wire format. Malformed lines are skipped. */
+    /**
+     * Parse a `coco-sites v1` document.
+     *
+     * Refuses rather than copes. The header must match EXACTLY: this artifact is
+     * read by the IntelliJ plugin across a repo boundary, and parsing an unknown
+     * version under v1 assumptions yields confident, wrong coverage that nothing
+     * downstream can detect. A short row is an error carrying its line number,
+     * not something to skip — a truncated file must not report better coverage
+     * than it measured.
+     *
+     * @throws CocoFormatException on a wrong/missing header, a malformed row, or
+     *         an unrecognised site kind.
+     */
     public static #ArrayList<Site> decode(String text) {
         ArrayList<Site> out #= heap ArrayList<Site>();
         ArrayList<String> lines #= Text.splitLines(text);
-        int32 i = 0;
+
+        if (lines.count() < 1) {
+            throw heap CocoFormatException(
+                "coco-sites: empty document; expected header \"" + SiteTable.HEADER + "\"");
+        }
+        String header = lines.get(0);
+        if (header.equals(SiteTable.HEADER) == false) {
+            throw heap CocoFormatException(
+                "coco-sites: unsupported header \"" + header
+              + "\"; this build reads only \"" + SiteTable.HEADER + "\"");
+        }
+
+        // lines.get(0) is line 1, so the row at index i is line i+1.
+        int32 i = 1;
         while (i < lines.count()) {
             String l = lines.get(i);
-            if (l.startsWith("coco-sites") == false && l.byteLength() > 0) {
+            if (l.byteLength() > 0) {
                 ArrayList<String> f #= SiteTable.splitTabs(l);
-                if (f.count() >= 9) {
-                    Site s #= heap Site(
-                        Text.parseIntAt(f.get(0), 0),
-                        f.get(4).substring(0, f.get(4).byteLength()),
-                        Text.parseIntAt(f.get(2), 0),
-                        f.get(5).substring(0, f.get(5).byteLength()),
-                        f.get(6).substring(0, f.get(6).byteLength()),
-                        SiteTable.kindOf(f.get(1)),
-                        Text.parseIntAt(f.get(3), 0),
-                        f.get(7).substring(0, f.get(7).byteLength()),
-                        f.get(8).substring(0, f.get(8).byteLength()));
-                    out.add(#s);
+                if (f.count() < 9) {
+                    throw heap CocoFormatException(
+                        "coco-sites: malformed row at line " + Text.fromInt(i + 1)
+                      + "; expected 9 tab-separated fields, found " + Text.fromInt(f.count()));
                 }
+                Site s #= heap Site(
+                    Text.parseIntAt(f.get(0), 0),
+                    f.get(4).substring(0, f.get(4).byteLength()),
+                    Text.parseIntAt(f.get(2), 0),
+                    f.get(5).substring(0, f.get(5).byteLength()),
+                    f.get(6).substring(0, f.get(6).byteLength()),
+                    SiteTable.kindOfAt(f.get(1), i + 1),
+                    Text.parseIntAt(f.get(3), 0),
+                    f.get(7).substring(0, f.get(7).byteLength()),
+                    f.get(8).substring(0, f.get(8).byteLength()));
+                out.add(#s);
             }
             i = i + 1;
         }
@@ -98,10 +145,17 @@ public class SiteTable {
         return #out;
     }
 
-    static SiteKind kindOf(String name) {
+    /**
+     * Map a wire kind name to its enum. Refuses an unrecognised name: the old
+     * fall-through to `SiteKind.LINE` meant a kind added in a later format
+     * version would be read as a line probe and quietly distort branch coverage.
+     */
+    static SiteKind kindOfAt(String name, int64 line) {
         if (name.equals("function"))     { return SiteKind.FUNCTION; }
+        if (name.equals("line"))         { return SiteKind.LINE; }
         if (name.equals("branch-true"))  { return SiteKind.BRANCH_T; }
         if (name.equals("branch-false")) { return SiteKind.BRANCH_F; }
-        return SiteKind.LINE;
+        throw heap CocoFormatException(
+            "coco-sites: unknown site kind \"" + name + "\" at line " + Text.fromInt(line));
     }
 }
