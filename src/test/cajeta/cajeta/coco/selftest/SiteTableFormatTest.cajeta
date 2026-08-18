@@ -1,0 +1,124 @@
+package cajeta.coco.selftest;
+
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteKind;
+import cajeta.coco.model.SiteTable;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+import dev.cajeta.unit.Assert;
+
+/**
+ * The `coco-sites v1` wire contract — ide-coverage-plan 1.1.
+ *
+ * These pin the format as a PUBLISHED INTERFACE rather than an internal detail
+ * that happens to hit disk. Once the IntelliJ plugin reads it, `sites.tsv` is an
+ * API across two repos on independent release cycles, and a reader that
+ * misparses a future version is worse than one that refuses it: it produces
+ * confident, wrong coverage.
+ *
+ * Written before the enforcement exists, so most of these are RED on arrival —
+ * deliberately. `decode` today tests `startsWith("coco-sites")`, which accepts
+ * `v2`, `v99` or anything else and then parses the rows under v1 assumptions;
+ * and it drops a short row with `if (f.count() >= 9)` and no report at all. It
+ * has no error surface to report through, which is the substance of 1.2.b–d.
+ */
+public class SiteTableFormatTest {
+
+    public SiteTableFormatTest() {
+        return;
+    }
+
+    /**
+     * Decode and discard. The owned result is bound and dropped in a normal
+     * method body rather than inside an `assertThrows` lambda — binding a `#=`
+     * local inside the lambda left a corrupt drop entry and took the runner
+     * down with a SIGSEGV after the first failing assertion.
+     */
+    static void decodeAndDiscard(String text) {
+        ArrayList<Site> sites #= SiteTable.decode(text);
+        return;
+    }
+
+    /** A well-formed v1 document: header plus three sites, one of each shape. */
+    static #String fixture() {
+        return "coco-sites v1\n"
+             + "1\tfunction\t5\t0\tCond.cajeta\tprobe.Cond\tboth\tentry\t-\n"
+             + "2\tbranch-true\t5\t1\tCond.cajeta\tprobe.Cond\tboth\tentry\tland_rhs\n"
+             + "3\tbranch-false\t5\t1\tCond.cajeta\tprobe.Cond\tboth\tentry\tland_merge\n";
+    }
+
+    /**
+     * The invariant the other tests protect: a well-formed document survives
+     * decode -> encode byte-for-byte. Expected GREEN today; it is the guard that
+     * the enforcement work does not change what a valid file means.
+     */
+    @Test
+    public void roundTripOfAValidDocumentIsLossless() {
+        String original = SiteTableFormatTest.fixture();
+        ArrayList<Site> sites #= SiteTable.decode(original);
+        Assert.equals(3, sites.count());
+        String reencoded #= SiteTable.encode(sites);
+        Assert.that(reencoded).isEqualTo(original);
+    }
+
+    /**
+     * 1.1.a — an unknown version is REFUSED, not parsed on a guess.
+     * RED today: the prefix check accepts `coco-sites v2` and parses on.
+     */
+    @Test
+    public void anUnknownVersionIsRefused() {
+        Assert.assertThrows(() -> {
+            SiteTableFormatTest.decodeAndDiscard(
+                "coco-sites v2\n"
+              + "1\tfunction\t5\t0\tCond.cajeta\tprobe.Cond\tboth\tentry\t-\n");
+        });
+    }
+
+    /** A missing header is as unacceptable as a wrong one — there is no v0. */
+    @Test
+    public void aMissingHeaderIsRefused() {
+        Assert.assertThrows(() -> {
+            SiteTableFormatTest.decodeAndDiscard(
+                "1\tfunction\t5\t0\tCond.cajeta\tprobe.Cond\tboth\tentry\t-\n");
+        });
+    }
+
+    /**
+     * 1.1.c — a malformed row is reported WITH ITS LINE NUMBER.
+     * RED today: `f.count() >= 9` drops the short row and returns the rest, so a
+     * truncated file silently reports better coverage than it measured.
+     */
+    @Test
+    public void aMalformedRowReportsItsLineNumber() {
+        boolean refused = false;
+        String detail = "";
+        try {
+            SiteTableFormatTest.decodeAndDiscard(
+                "coco-sites v1\n"
+              + "1\tfunction\t5\t0\tCond.cajeta\tprobe.Cond\tboth\tentry\t-\n"
+              + "2\tbranch-true\t5\n"
+              + "3\tbranch-false\t5\t1\tCond.cajeta\tprobe.Cond\tboth\tentry\tland_merge\n");
+        } catch (Exception e) {
+            refused = true;
+            detail = e.message;
+        }
+        Assert.isTrue(refused);
+        // The short row is the third line of the document.
+        Assert.that(detail).contains("3");
+    }
+
+    /**
+     * An unrecognised kind name is refused rather than silently coerced.
+     * RED today: `kindOf` falls through to `SiteKind.LINE` for anything it does
+     * not recognise, so a v2 kind would be read as a line probe and quietly
+     * distort branch coverage.
+     */
+    @Test
+    public void anUnknownSiteKindIsRefused() {
+        Assert.assertThrows(() -> {
+            SiteTableFormatTest.decodeAndDiscard(
+                "coco-sites v1\n"
+              + "1\tcondition-mcdc\t5\t0\tCond.cajeta\tprobe.Cond\tboth\tentry\t-\n");
+        });
+    }
+}

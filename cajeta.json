@@ -5,7 +5,7 @@
     "details": {
         "name":               "dev.cajeta.coco",
         "version":            "0.2.0",
-        "description":        "Single-package buildtool sample",
+        "description":        "cajeta-coco — coverage, dead-code and mutation analysis for Cajeta",
         "license":            "Apache-2.0",
         "authors":            ["sample"],
         "cajeta-lang-version": "1.0"
@@ -37,7 +37,12 @@
         },
 
         "dev-dependencies": {
-            "cajeta.testkit": "1.0.*"
+            // dev.cajeta.unit drives the suite (reflective @Test discovery).
+            // The starter template's "cajeta.testkit": "1.0.*" placeholder was
+            // carried here unedited and names a package that exists in no
+            // repository — the same trap cajeta-unit and cajeta-logging both
+            // documented and fixed.
+            "dev.cajeta.unit": "0.2.2"
         },
 
         // First-party lint + coverage plugins. Optional — comment
