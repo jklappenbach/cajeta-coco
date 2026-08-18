@@ -36,7 +36,11 @@ a loop, a guarded branch, and one deliberately-uncalled method.
 - Arms pair by `(file, owner, method, block)`. **`decision` is `-1` on every row**
   here and is not a usable key; block names alone over-merge, because every method
   has an `entry` block.
+- All 7 `function` rows carry **`line` 0** — not a source line. Excluding them,
+  `probe/Cond.cajeta` has 21 instrumented lines and `probe/Helper.cajeta` has 2.
 - `block` and `target` are **empty** on `function` and `line` rows.
+- Two lines carry **two decisions each** (`&&` and `||` on one line): `Cond` lines
+  5 and 11. A consumer that assumes one decision per line loses half of them.
 - Two distinct owners: `probe.Cond` and `probe.Helper`. Both modules are present
   under one header — this fixture exists largely to pin that.
 
@@ -54,6 +58,15 @@ a loop, a guarded branch, and one deliberately-uncalled method.
   executed once would report as executed many times.
 - A `branch-true` present with its `branch-false` absent is a **partially covered
   decision** — distinct from an uncovered one, where neither arm appears.
+- Per file, a correct reader derives:
+
+  | file | lines | branch arms | methods |
+  |---|---|---|---|
+  | `probe/Cond.cajeta` | 14/21 | 7/14 | 4/6 |
+  | `probe/Helper.cajeta` | 1/2 | 1/2 | 1/1 |
+
+  Method coverage counts a method as covered when any of its lines ran, so
+  `guarded` and `neverCalled` are the two uncovered ones.
 
 ## What a reader must reject
 

@@ -44,7 +44,7 @@ a row with fewer is an error reported with its line number, never skipped.
 |---|---|---|
 | `id` | integer | Probe id. **Dense and global across the run**, and the join key to the profile. |
 | `kind` | enum | `function` · `line` · `branch-true` · `branch-false`. An unrecognised value is an error, not a fallback. |
-| `line` | integer | 1-based source line. |
+| `line` | integer | 1-based source line — **except on `function` rows, which carry `0`**. See below. |
 | `decision` | integer | **Declared** as the decision-grouping field, but the current engine writes `-1` on every row, branches included. Do not group on it. See below. |
 | `file` | text | Source path as the compiler saw it. |
 | `owner` | text | Declaring type, canonical (`probe.Cond`). |
@@ -58,6 +58,19 @@ split on tab without quoting rules.
 **A document carries exactly one header.** `sites.tsv` is assembled by appending
 one module at a time, and the header belongs to the first module only —
 `SiteTable.encode` emits a complete document, `encodeRows` emits rows to append.
+
+### `function` rows carry line 0
+
+A `function` probe records that a method was entered; it is **not** placed on a
+source line, and its `line` field is `0` on every row. Zero is not a line
+number, so a consumer must keep function probes out of per-line rollups — a
+naive "max hits on line N" that includes them puts a markable entry on line 0,
+and a line array sized from the raw maximum leaves a slot nothing can display.
+
+Function coverage is therefore derived from the probe itself, not from a line:
+the method is covered when its `function` probe was hit. A method may have a
+`function` probe and no line probes at all, so harvesting method names from line
+rows alone loses it.
 
 ### Pairing branch arms
 
@@ -80,6 +93,7 @@ reading this document, which is the argument for having the fixture.
 
 ### What a consumer must not assume
 - That ids are stable across runs — they are dense per run, not durable.
+- That every `line` is a source line: `function` rows carry `0`.
 - That `file` is absolute, or relative to any particular root.
 - That `method` is a stable identifier; it carries a signature and will change
   when the signature does.
