@@ -32,7 +32,11 @@ a loop, a guarded branch, and one deliberately-uncalled method.
   | `function` | 7 |
 
 - `branch-true` and `branch-false` counts are **equal**, because arms are emitted
-  in pairs sharing a `decision`.
+  in pairs — 8 decisions, two arms each.
+- Arms pair by `(file, owner, method, block)`. **`decision` is `-1` on every row**
+  here and is not a usable key; block names alone over-merge, because every method
+  has an `entry` block.
+- `block` and `target` are **empty** on `function` and `line` rows.
 - Two distinct owners: `probe.Cond` and `probe.Helper`. Both modules are present
   under one header — this fixture exists largely to pin that.
 

@@ -45,12 +45,12 @@ a row with fewer is an error reported with its line number, never skipped.
 | `id` | integer | Probe id. **Dense and global across the run**, and the join key to the profile. |
 | `kind` | enum | `function` · `line` · `branch-true` · `branch-false`. An unrecognised value is an error, not a fallback. |
 | `line` | integer | 1-based source line. |
-| `decision` | integer | Groups the arms of one decision; `-1` where not applicable. |
+| `decision` | integer | **Declared** as the decision-grouping field, but the current engine writes `-1` on every row, branches included. Do not group on it. See below. |
 | `file` | text | Source path as the compiler saw it. |
 | `owner` | text | Declaring type, canonical (`probe.Cond`). |
 | `method` | text | Method with its parameter signature. |
 | `block` | text | IR basic block the probe sits in. |
-| `target` | text | Branch target block, or `-` for non-branch kinds. |
+| `target` | text | Branch target block. **Empty** for non-branch kinds, not `-`. |
 
 The free-text fields come last and are tab-free by construction, so a reader may
 split on tab without quoting rules.
@@ -59,9 +59,21 @@ split on tab without quoting rules.
 one module at a time, and the header belongs to the first module only —
 `SiteTable.encode` emits a complete document, `encodeRows` emits rows to append.
 
+### Pairing branch arms
+
+`decision` is unpopulated, so arms are paired by **`(file, owner, method, block)`**.
+A basic block ends in at most one conditional branch, which makes `block` the
+natural key — but block *names* repeat across methods, since every method has an
+`entry`, so the enclosing method is part of the key.
+
+Grouping on `decision` finds nothing; grouping on `block` alone over-merges. Both
+were caught by the plugin's reader tests against the fixture rather than by
+reading this document, which is the argument for having the fixture.
+
 ### What a consumer may assume
 - `id` is unique within a run and indexes the profile directly.
-- Every `branch-true` has a matching `branch-false` sharing its `decision`.
+- Every `branch-true` has a matching `branch-false` in the same
+  `(file, owner, method, block)`.
 - Compiler-inserted guard branches are **already excluded**; a consumer must not
   filter again, and must not expect them.
 - Ordering is by module then by id; do not depend on it beyond that.
@@ -71,6 +83,7 @@ one module at a time, and the header belongs to the first module only —
 - That `file` is absolute, or relative to any particular root.
 - That `method` is a stable identifier; it carries a signature and will change
   when the signature does.
+- That `decision` means anything. It is reserved and currently always `-1`.
 
 ---
 
@@ -125,5 +138,9 @@ run, with `EXPECTED.md` stating what a correct reader derives from it. It is the
 contract's executable half: a consumer should be able to be written against this
 document plus that fixture, without reading coco's source.
 
-The fixture lives here, in coco, because coco owns the format. Consumers
-reference it rather than copying it — a second copy is a second thing to drift.
+The fixture lives here, in coco, because coco owns the format — this is the
+source of truth. A consumer that cannot reach across repos at build time (the
+IntelliJ plugin cannot: Gradle has no path to a sibling checkout that may not
+exist on CI) should vendor a copy WITH a drift check that asserts byte-identity
+when a coco checkout is available, and skips when it is not. Copying silently is
+what creates drift; copying with a check does not.
