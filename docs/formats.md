@@ -4,13 +4,14 @@ These are the files coco writes for other tools to read. They are a **published
 interface**, not internal detail: the IntelliJ plugin consumes them across a repo
 boundary on an independent release cycle, so a change here is a change to an API.
 
-Three formats, each independently versioned:
+Four formats, each independently versioned:
 
 | File | Version marker | Written by |
 |---|---|---|
 | `sites.tsv` | `coco-sites v1` | `coco instrument`, once per run |
 | `coco.profile` | `coco-profile v1` | the probe runtime, at program exit |
 | `attribution.tsv` | `# coco-attribution v1` | `coco attribution` |
+| `crap.tsv` | `coco-crap v1` | `coco crap`, and the `report` action |
 
 ## The compatibility rule
 
@@ -142,6 +143,57 @@ per-test summary, then one row per covered line.
 The test list is `|`-separated and **truncated**, with `+N` naming how many were
 omitted. A consumer must treat the list as a sample, not a complete set — the
 counts in field 3 and in the `# test` header are authoritative.
+
+---
+
+## `coco-crap v1` — the risk ranking
+
+```
+coco-crap v1
+<method>	<complexity>	<coverage-per-mille>	<score-tenths>
+```
+
+One header line, then one tab-separated row per instrumented method, **already
+sorted worst-first**. A consumer should preserve that order rather than re-sort;
+it is the ranking.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `method` | text | `owner.method`, as in the site table. |
+| `complexity` | integer | Cyclomatic ≈ `1 + decisions`. Compiler guard branches were excluded at instrumentation time, so they do not inflate it. |
+| `coverage-per-mille` | integer | The method's line coverage, 0–1000. |
+| `score-tenths` | integer | CRAP × 10. |
+
+### Why this file exists at all
+
+The same numbers are in `coverage.html`. A report is not an interface, and the
+alternative — every consumer re-deriving the score — means a metric with two
+definitions. Two definitions drift, and the drift is invisible because both
+numbers look plausible. So the score is computed once, here, and published.
+
+### Integers, deliberately
+
+Scores are in tenths and coverage in per-mille because the computation is
+already integer-only: reports are diffed in CI, and float formatting drift would
+show up as phantom changes. A consumer that wants `12.3` divides.
+
+The formula is Savoia & Copeland's:
+
+```
+CRAP(m) = comp(m)² × (1 − cov(m))³ + comp(m)
+```
+
+The conventional attention threshold is 30, i.e. `score-tenths >= 300`.
+
+### What a consumer may assume
+- Rows are sorted by score, descending.
+- Every instrumented method with a `function` probe appears exactly once.
+- `complexity >= 1`.
+
+### What a consumer must not assume
+- That `method` is stable across signature changes — it carries the signature.
+- That the file exists: it is written by the `report` action, so a run that only
+  instrumented has not produced one.
 
 ---
 

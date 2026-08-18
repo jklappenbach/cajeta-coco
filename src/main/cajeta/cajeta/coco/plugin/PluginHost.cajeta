@@ -2,6 +2,7 @@ package cajeta.coco.plugin;
 
 import cajeta.codec.json.JsonReader;
 import cajeta.coco.analysis.CallGraph;
+import cajeta.coco.analysis.Crap;
 import cajeta.coco.analysis.Coverage;
 import cajeta.coco.analysis.FileStats;
 import cajeta.coco.model.HitProfile;
@@ -141,6 +142,11 @@ public class PluginHost {
         Io.writeAll(base + "/lcov.info", lcov);
         String sarif #= Sarif.render(sites, profile, stats, graph, reachable);
         Io.writeAll(base + "/coverage.sarif", sarif);
+        // The same ranking the HTML shows, as data. A report is not an
+        // interface, and the IntelliJ plugin must not re-derive the score in
+        // another language — one metric, one definition.
+        Crap ranked #= Crap.rank(sites, profile);
+        Io.writeAll(base + "/crap.tsv", ranked.encode());
 
         int64 lc = Coverage.totalLinesCovered(stats);
         int64 lt = Coverage.totalLines(stats);

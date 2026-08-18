@@ -186,7 +186,7 @@ public class Pipeline {
         // is "." (its documented best-effort), so a base-composed path would
         // resolve from the wrong directory once the child chdirs.
         runv.add("../measured");
-        ProcessResult rr = Pipeline.spawnIn(runv, base + "/run");
+        ProcessResult rr #= Pipeline.spawnIn(runv, base + "/run");
         if (rr.launched() == false) {
             PluginHost.resultError("instrument: measured binary failed to launch");
             return false;
@@ -282,7 +282,7 @@ public class Pipeline {
             lv.add("archive");
             lv.add("list");
             lv.add(cja.substring(0, cja.byteLength()));
-            ProcessResult res = Pipeline.spawnIn(lv, r.workdir);
+            ProcessResult res #= Pipeline.spawnIn(lv, r.workdir);
             if (res.launched() && res.code() == 0) {
                 String listing #= Pipeline.stdoutOf(res);
                 if (Text.containsFrom(listing, entry, 0)) {
@@ -303,7 +303,7 @@ public class Pipeline {
         cat.add("cat");
         cat.add(unitCja.substring(0, unitCja.byteLength()));
         cat.add("dev/cajeta/unit/Runner.bc");
-        ProcessResult res = Pipeline.spawnIn(cat, r.workdir);
+        ProcessResult res #= Pipeline.spawnIn(cat, r.workdir);
         if (res.launched() == false || res.code() != 0) { return false; }
         int8[] bc = res.stdout();
         if (bc == null) { return false; }
@@ -352,7 +352,7 @@ public class Pipeline {
             lv.add("archive");
             lv.add("list");
             lv.add(d.substring(0, d.byteLength()));
-            ProcessResult res = Pipeline.spawnIn(lv, r.workdir);
+            ProcessResult res #= Pipeline.spawnIn(lv, r.workdir);
             if (res.launched() && res.code() == 0) {
                 String listing #= Pipeline.stdoutOf(res);
                 if (Text.containsFrom(listing, "cajeta/coco/rt/Probe.bc", 0)) {
@@ -376,7 +376,7 @@ public class Pipeline {
             cat.add("cat");
             cat.add(cocoCja.substring(0, cocoCja.byteLength()));
             cat.add("cajeta/coco/rt/" + cls + ".bc");
-            ProcessResult res = Pipeline.spawnIn(cat, r.workdir);
+            ProcessResult res #= Pipeline.spawnIn(cat, r.workdir);
             if (res.launched() == false || res.code() != 0) {
                 PluginHost.resultError("instrument: cannot extract probe runtime ("
                                        + cls + ") from " + cocoCja);
@@ -423,7 +423,7 @@ public class Pipeline {
             lv.add("archive");
             lv.add("list");
             lv.add(cja.substring(0, cja.byteLength()));
-            ProcessResult res = Pipeline.spawnIn(lv, r.workdir);
+            ProcessResult res #= Pipeline.spawnIn(lv, r.workdir);
             if (res.launched() && res.code() == 0) {
                 String listing #= Pipeline.stdoutOf(res);
                 ArrayList<String> lines #= Text.splitLines(listing);
@@ -520,7 +520,7 @@ public class Pipeline {
 
     /** Spawn; on failure emit a result error with the stderr tail. */
     static boolean spawnOrFail(Request r, ArrayList<String> args, String what) {
-        ProcessResult res = Pipeline.spawnIn(args, r.workdir);
+        ProcessResult res #= Pipeline.spawnIn(args, r.workdir);
         if (res.launched() == false) {
             PluginHost.resultError("instrument: cannot launch " + what);
             return false;
@@ -565,7 +565,7 @@ public class Pipeline {
         sh.add("/bin/sh");
         sh.add("-c");
         sh.add(script.substring(0, script.byteLength()));
-        ProcessResult res = Pipeline.spawnIn(sh, r.workdir);
+        ProcessResult res #= Pipeline.spawnIn(sh, r.workdir);
         if (res.launched() == false) {
             PluginHost.log("coco: warning — shell helper failed to launch");
         }

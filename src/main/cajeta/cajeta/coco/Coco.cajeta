@@ -4,6 +4,7 @@ import cajeta.coco.analysis.Attribution;
 import cajeta.coco.analysis.CallGraph;
 import cajeta.coco.analysis.Conditions;
 import cajeta.coco.analysis.Coverage;
+import cajeta.coco.analysis.Crap;
 import cajeta.coco.analysis.FileStats;
 import cajeta.coco.ir.IdGen;
 import cajeta.coco.ir.Instrumenter;
@@ -66,6 +67,8 @@ public class Coco {
             Coco.cmdMutate(args, at);
         } else if (cmd.equals("lcov")) {
             Coco.cmdLcov(args, at);
+        } else if (cmd.equals("crap")) {
+            Coco.cmdCrap(args, at);
         } else if (cmd.equals("sarif")) {
             Coco.cmdSarif(args, at);
         } else if (cmd.equals("annotate")) {
@@ -94,6 +97,7 @@ public class Coco {
             if (a.equals("mutants")) { return i; }
             if (a.equals("mutate")) { return i; }
             if (a.equals("lcov")) { return i; }
+            if (a.equals("crap")) { return i; }
             if (a.equals("sarif")) { return i; }
             if (a.equals("annotate")) { return i; }
             if (a.equals("plugin-host")) { return i; }
@@ -276,6 +280,21 @@ public class Coco {
         System.stdout.println("coco: lcov written to " + args[at + 3]);
     }
 
+    /** `crap <sites.tsv> <coco.profile> <out.tsv>` — the CRAP ranking as data. */
+    static void cmdCrap(String[] args, int64 at) {
+        if (args.count() < at + 4) {
+            System.stdout.println("coco: crap <sites.tsv> <coco.profile> <out.tsv>");
+            return;
+        }
+        String sitesText #= Io.readAll(args[at + 1]);
+        ArrayList<Site> sites #= SiteTable.decode(sitesText);
+        String profText #= Io.readAll(args[at + 2]);
+        HitProfile profile #= HitProfile.decode(profText, "all");
+        Crap ranked #= Crap.rank(sites, profile);
+        Io.writeAll(args[at + 3], ranked.encode());
+        System.stdout.println("coco: crap written to " + args[at + 3]);
+    }
+
     /** `hook-tests <in.ll> <out.ll>` — inject the per-test attribution hook. */
     static void cmdHookTests(String[] args, int64 at) {
         if (args.count() < at + 3) {
@@ -428,5 +447,6 @@ public class Coco {
         System.stdout.println("cajeta-coco engine");
         System.stdout.println("  instrument <in.ll> <out.ll> <sites.tsv> [base-id]");
         System.stdout.println("  entry <in.ll> <out.ll> <symbol> <probe-count>");
+        System.stdout.println("  crap <sites.tsv> <coco.profile> <out.tsv>");
     }
 }

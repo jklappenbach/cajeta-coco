@@ -55,6 +55,42 @@ public class Crap {
     /** Line-coverage percent (integer) for row `i`. */
     public int64 covPercentAt(int32 i) { return this.covPerMille.get(i) / 10; }
 
+    /** The wire header — one document, one version (see docs/formats.md). */
+    public static #String header() { return "coco-crap v1"; }
+
+    /**
+     * Encode as `coco-crap v1`, worst-first.
+     *
+     * The scores exist in the HTML report already, but a report is not an
+     * interface: the IntelliJ plugin needs the ranking as data, and the ONE
+     * thing that must not happen is a second implementation of the formula in
+     * another language. A metric with two definitions drifts, and the drift is
+     * invisible because both numbers look plausible. So the score is computed
+     * here, once, and published.
+     *
+     * Integers only, in the units the computation already uses — tenths for the
+     * score, per-mille for coverage. Reports are diffed in CI and float
+     * formatting drift would show up as phantom changes.
+     */
+    public #String encode() {
+        StringBuilder sb = stack StringBuilder();
+        sb.append(Crap.header());
+        sb.append("\n");
+        int32 i = 0;
+        while (i < this.methods.count()) {
+            sb.append(this.methods.get(i));
+            sb.append("\t");
+            sb.append(Text.fromInt(this.complexity.get(i)));
+            sb.append("\t");
+            sb.append(Text.fromInt(this.covPerMille.get(i)));
+            sb.append("\t");
+            sb.append(Text.fromInt(this.scoreTenths.get(i)));
+            sb.append("\n");
+            i = i + 1;
+        }
+        return sb.toString();
+    }
+
     /** Render row `i`'s score as `12.3`. */
     public #String scoreAt(int32 i) {
         int64 t = this.scoreTenths.get(i);
