@@ -14,6 +14,7 @@ a loop, a guarded branch, and one deliberately-uncalled method.
 |---|---|
 | `sites.tsv` | `coco-sites v1` |
 | `coco.profile` | `coco-profile v1` |
+| `crap.tsv` | `coco-crap v1` |
 
 ## What a correct reader derives
 
@@ -67,6 +68,19 @@ a loop, a guarded branch, and one deliberately-uncalled method.
 
   Method coverage counts a method as covered when any of its lines ran, so
   `guarded` and `neverCalled` are the two uncovered ones.
+
+### From `crap.tsv`
+- Header `coco-crap v1`, then **7** rows — one per method with a `function`
+  probe, matching the site table's 7.
+- Rows are **already sorted worst-first**; a consumer preserves that order
+  rather than re-sorting, because the order IS the ranking.
+- `neverCalled` ranks worst (complexity 2, 0% covered, CRAP 6.0) and `guarded`
+  ranks near-best despite also being 0% covered — complexity 1 makes an
+  untested one-liner cheap to ignore. That contrast is the whole point of the
+  metric, and this fixture is the smallest case that shows it.
+- Scores are **tenths** and coverage **per-mille**, both integers. A consumer
+  that wants `6.0` divides; it must not re-derive the score from complexity and
+  coverage, which would be a second definition of the metric.
 
 ## What a reader must reject
 

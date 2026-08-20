@@ -54,7 +54,7 @@ public class SiteTableFormatTest {
      */
     @Test
     public void roundTripOfAValidDocumentIsLossless() {
-        String original = SiteTableFormatTest.fixture();
+        String original #= SiteTableFormatTest.fixture();
         ArrayList<Site> sites #= SiteTable.decode(original);
         Assert.equals(3, sites.count());
         String reencoded #= SiteTable.encode(sites);
