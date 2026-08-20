@@ -87,7 +87,20 @@ public class Sarif {
                     ruleId #= "coco/untested-method";
                     level #= "warning";
                     msg.append(s.qualified());
-                    msg.append(" is reachable but never entered by the suite.");
+                    // Two ways to land here, and they are not the same claim.
+                    // A method the graph cannot reach, on a class that ran, is
+                    // spared by the LIVENESS guard — saying it "is reachable"
+                    // asserts a call path that was never found, and sends a
+                    // reader hunting for callers that do not exist.
+                    if (graph != null && CallGraph.isIn(reachable, key) == false) {
+                        msg.append(" is never entered by the suite. No static call");
+                        msg.append(" path reaches it, but its class has executed");
+                        msg.append(" methods; reflection and compile-time DI reach");
+                        msg.append(" members a static graph cannot see, so it is not");
+                        msg.append(" reported as dead.");
+                    } else {
+                        msg.append(" is reachable but never entered by the suite.");
+                    }
                     if (graph != null) {
                         String callers #= graph.callersOf(key);
                         if (callers.byteLength() > 0) {
