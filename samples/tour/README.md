@@ -27,7 +27,7 @@ The control matters as much as the other five. A tour of findings is worthless
 without one class that produces none — it is what proves the rest are findings
 rather than noise.
 
-## Requires cajeta 0.21.1 or newer
+## Requires cajeta 0.22.2 or newer
 
 Not a style preference — the plugin is **AOT-compiled by whatever toolchain
 runs it**, from the `.cja` the resolver fetched. cajeta 0.21.0 miscompiles
@@ -40,8 +40,14 @@ cajeta: uncaught exception (value=0x3)
 ```
 
 A published plugin cannot protect you from this: the bytes are fine, the
-compile of them is not. Check with `cajeta --version` before filing a bug
-against the tour.
+compile of them is not.
+
+0.22.2 raises the floor again, for a different reason: coco lowers IR with
+`cajeta lower` rather than a separately installed `llc`. Before that it needed
+an LLVM matching the compiler exactly, which an `apt install` does not give you
+— the package ships LLVM linked into the compiler, not the command-line tools.
+
+Check `cajeta --version` before filing a bug against the tour.
 
 ## Run it
 

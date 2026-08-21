@@ -22,7 +22,7 @@ OUT=build/coco
 # stack names coco and blames the wrong thing.
 ver="$("$CAJETA" --version 2>/dev/null | awk '{print $2}')"
 case "$ver" in
-    0.[0-9].*|0.1?.*|0.20.*|0.21.0) echo "check-tour: cajeta $ver is too old — coco needs 0.21.1+" >&2; exit 1 ;;
+    0.[0-9].*|0.1?.*|0.20.*|0.21.*|0.22.0|0.22.1) echo "check-tour: cajeta $ver is too old — coco needs 0.22.2+ (it lowers IR with \`cajeta lower\`)" >&2; exit 1 ;;
 esac
 
 "$CAJETA" cover

@@ -1,7 +1,7 @@
 {
     "details": {
         "name":               "dev.cajeta.coverage",
-        "version":            "0.5.1",
+        "version":            "0.5.2",
         "description":        "Coverage instrumentation, reporting and gating for cajeta test tasks — backed by cajeta-coco",
         "license":            "Apache-2.0",
         "authors":            ["jklappenbach"],
@@ -26,7 +26,7 @@
     "settings": {
         "capabilities": ["process", "filesystem"],
         "dependencies": {
-            "dev.cajeta.coco": "0.5.1",
+            "dev.cajeta.coco": "0.5.2",
             "dev.cajeta.xref": "0.1.0"
         },
         "repositories": [
