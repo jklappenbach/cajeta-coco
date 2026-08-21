@@ -27,6 +27,22 @@ The control matters as much as the other five. A tour of findings is worthless
 without one class that produces none — it is what proves the rest are findings
 rather than noise.
 
+## Requires cajeta 0.21.1 or newer
+
+Not a style preference — the plugin is **AOT-compiled by whatever toolchain
+runs it**, from the `.cja` the resolver fetched. cajeta 0.21.0 miscompiles
+coco's file reads (an intrinsic `#`-return crossing a return boundary loses its
+title), so every coco verb throws before doing anything:
+
+```
+cajeta: uncaught exception (value=0x3)
+  at cajeta.coco.plugin.Pipeline.moduleFiles(...)
+```
+
+A published plugin cannot protect you from this: the bytes are fine, the
+compile of them is not. Check with `cajeta --version` before filing a bug
+against the tour.
+
 ## Run it
 
 ```bash

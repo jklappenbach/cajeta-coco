@@ -2,6 +2,7 @@ package cajeta.coco.ir;
 
 import cajeta.coco.model.Site;
 import cajeta.coco.model.SiteKind;
+import cajeta.coco.util.Glob;
 import cajeta.coco.util.Text;
 import cajeta.collection.ArrayList;
 import cajeta.lang.String;
@@ -78,7 +79,21 @@ public class Instrumenter {
      * Appends every probe site created to `sites` and draws ids from `ids`;
      * both are shared across the whole run so ids stay dense and unique.
      */
+    /** Back-compat entry: instrument everything. */
     public static #String instrument(String llText, ArrayList<Site> sites, IdGen ids) {
+        ArrayList<String> none #= heap ArrayList<String>();
+        return Instrumenter.instrument(llText, sites, ids, none);
+    }
+
+    /**
+     * `symbolExcludes` are glob patterns over `owner.method` — the `symbol`
+     * kind of the coverage exclude list. They are applied HERE and not by
+     * skipping a module, because a module holds many symbols. A matching
+     * function is copied through unprobed, so it leaves the numerator and the
+     * denominator together, which is what the exclude contract promises.
+     */
+    public static #String instrument(String llText, ArrayList<Site> sites, IdGen ids,
+                                     ArrayList<String> symbolExcludes) {
         ArrayList<String> lines #= Text.splitLines(llText);
         ArrayList<String> out #= heap ArrayList<String>();
         String file #= Instrumenter.sourceFileOf(lines);
@@ -89,7 +104,8 @@ public class Instrumenter {
             String line = lines.get(i);
             if (Instrumenter.isDefine(line)) {
                 int32 end = Instrumenter.functionEnd(lines, i);
-                Instrumenter.instrumentFunction(lines, i, end, file, sites, ids, out);
+                Instrumenter.instrumentFunction(lines, i, end, file, sites, ids,
+                                                symbolExcludes, out);
                 i = end + 1;
             } else {
                 out.add(line.substring(0, line.byteLength()));
@@ -115,6 +131,7 @@ public class Instrumenter {
     static void instrumentFunction(ArrayList<String> lines, int32 defineIdx,
                                    int32 endIdx, String file,
                                    ArrayList<Site> sites, IdGen ids,
+                                   ArrayList<String> symbolExcludes,
                                    ArrayList<String> out) {
         String defLine = lines.get(defineIdx);
         String owner #= Instrumenter.ownerOf(defLine);
@@ -125,7 +142,11 @@ public class Instrumenter {
         // statements. Instrumenting them would add branch arms nobody can
         // write a test for (reflection dispatch compares) to the denominator,
         // capping honest branch coverage below 100%. Copied through untouched.
-        if (owner.byteLength() == 0) {
+        boolean skip = owner.byteLength() == 0;
+        if (skip == false) {
+            skip = Instrumenter.symbolExcluded(symbolExcludes, owner, method);
+        }
+        if (skip) {
             int32 c = defineIdx;
             while (c <= endIdx) {
                 String cl = lines.get(c);
@@ -530,6 +551,30 @@ public class Instrumenter {
     }
 
     static boolean isDefine(String line) { return line.startsWith("define "); }
+
+    /**
+     * Does any `symbol` exclude select `owner.method`?
+     *
+     * Both spellings match: the bare `pkg.Class.name` a reader writes, and the
+     * signature-carrying `pkg.Class.name(a:int64)` coco uses internally — so a
+     * pattern can name one overload when it means to.
+     */
+    static boolean symbolExcluded(ArrayList<String> patterns, String owner, String method) {
+        if (patterns.count() == 0) { return false; }
+        int64 paren = Text.indexOfFrom(method, "(", 0);
+        String bare #= method.substring(0, method.byteLength());
+        if (paren > 0) { bare #= method.substring(0, (int32) paren); }
+        String shortKey #= owner + "." + bare;
+        String fullKey #= owner + "." + method;
+        int32 i = 0;
+        while (i < patterns.count()) {
+            String p = patterns.get(i);
+            i = i + 1;
+            if (Glob.matches(p, shortKey)) { return true; }
+            if (Glob.matches(p, fullKey)) { return true; }
+        }
+        return false;
+    }
 
     static boolean isCondBranch(String line) {
         return Text.containsFrom(line, "br i1 ", 0);

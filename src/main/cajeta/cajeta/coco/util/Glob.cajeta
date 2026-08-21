@@ -1,0 +1,72 @@
+package cajeta.coco.util;
+
+import cajeta.lang.String;
+
+/**
+ * The glob dialect the coverage exclude list documents: `*`, `**`, `?`.
+ *
+ * Written because coco's exclude matching was a plain SUBSTRING test while the
+ * CLI, the plugin README and BuildTool.md all documented globs — so
+ * `**Generated.cajeta`, the example in every one of those documents, matched
+ * nothing.
+ *
+ * Semantics, chosen to match what the docs describe rather than what was
+ * easiest:
+ *
+ *   `?`  one character, never `/`
+ *   `*`  any run of characters, never crossing `/`
+ *   `**` any run of characters, `/` included
+ *
+ * The whole string must match — a glob is anchored. That is the one place it
+ * differs from the substring test it replaces, and the difference is not
+ * cosmetic: `tour/coco/tests/` matched as a substring and matches NOTHING as a
+ * glob. Legacy bare-string entries therefore keep substring semantics
+ * (Exclude), and only the typed `file` form is globbed.
+ */
+public class Glob {
+
+    /** Anchored match of `pattern` against the whole of `text`. */
+    public static boolean matches(String pattern, String text) {
+        return Glob.at(pattern, 0, text, 0);
+    }
+
+    static boolean at(String p, int32 pi, String s, int32 si) {
+        int32 pn = p.byteLength();
+        int32 sn = s.byteLength();
+        while (pi < pn) {
+            int8 c = p.byteAt(pi);
+            if (c == 42) {                                  // '*'
+                boolean crossesSlash = false;
+                int32 next = pi + 1;
+                if (next < pn) {
+                    if (p.byteAt(next) == 42) {             // '**'
+                        crossesSlash = true;
+                        next = next + 1;
+                    }
+                }
+                // Try the remainder at every reachable split point. A single
+                // `*` stops at the first `/`; `**` does not.
+                int32 k = si;
+                while (k <= sn) {
+                    if (Glob.at(p, next, s, k)) { return true; }
+                    if (k < sn) {
+                        if (crossesSlash == false) {
+                            if (s.byteAt(k) == 47) { return false; }   // '/'
+                        }
+                    }
+                    k = k + 1;
+                }
+                return false;
+            }
+            if (si >= sn) { return false; }
+            if (c == 63) {                                  // '?'
+                if (s.byteAt(si) == 47) { return false; }
+            } else {
+                if (c != s.byteAt(si)) { return false; }
+            }
+            pi = pi + 1;
+            si = si + 1;
+        }
+        return si == sn;
+    }
+}

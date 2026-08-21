@@ -101,6 +101,12 @@ public class Pipeline {
                        + Text.fromInt((int64) modules.count()) + " of "
                        + Text.fromInt((int64) linkModules.count()) + " modules");
 
+        // Symbol excludes cannot be applied by skipping a MODULE — a module
+        // holds many symbols — so they travel into the instrumenter and drop
+        // probes per function, which removes them from numerator and
+        // denominator alike.
+        ArrayList<String> symbolPatterns #= Pipeline.symbolPatterns(r);
+
         IdGen ids = heap IdGen();
         ArrayList<Site> sites #= heap ArrayList<Site>();
         int32 mi = 0;
@@ -108,7 +114,7 @@ public class Pipeline {
             String rel = modules.get(mi);
             String llPath #= base + "/ir/" + rel;
             String text #= Io.readAll(llPath);
-            String outIr #= Instrumenter.instrument(text, sites, ids);
+            String outIr #= Instrumenter.instrument(text, sites, ids, symbolPatterns);
             Io.writeAll(llPath, outIr);
             mi = mi + 1;
         }
@@ -264,7 +270,7 @@ public class Pipeline {
             if (applyExcludes) {
                 int32 e = 0;
                 while (keep && e < r.excludes.count()) {
-                    if (Text.containsFrom(f, r.excludes.get(e), 0)) { keep = false; }
+                    if (r.excludes.get(e).matchesFile(f)) { keep = false; }
                     e = e + 1;
                 }
             }
@@ -281,6 +287,44 @@ public class Pipeline {
     }
 
     /** Unique declaration `file` values from an xref document. */
+    /**
+     * The `symbol` patterns, and a validation pass over the whole list.
+     *
+     * The reason check mirrors what `cajeta coverage ignore` already refuses to
+     * write. Keeping them in step matters: a reason the CLI rejects but the
+     * plugin accepts is a check that only applies to people who use the CLI,
+     * which is the half that needs it least.
+     */
+    static #ArrayList<String> symbolPatterns(Request r) {
+        ArrayList<String> out #= heap ArrayList<String>();
+        int32 legacy = 0;
+        int32 i = 0;
+        while (i < r.excludes.count()) {
+            Exclude e = r.excludes.get(i);
+            i = i + 1;
+            if (e.isLegacy()) {
+                legacy = legacy + 1;
+                continue;
+            }
+            if (Exclude.isGenericReason(e.getReason())) {
+                PluginHost.log("coco: warning — exclude " + e.kindName() + " '"
+                    + e.getPattern() + "' has no usable reason. The reason"
+                    + " appears on every diff that touches this list, so it has"
+                    + " to justify itself.");
+            }
+            if (e.getKind() == Exclude.kindSymbol()) {
+                out.add(e.getPattern());
+            }
+        }
+        if (legacy > 0) {
+            PluginHost.log("coco: " + Text.fromInt((int64) legacy)
+                + " bare-string exclude(s) — matched as substrings, with no"
+                + " recorded reason. `cajeta coverage ignore --kind --pattern"
+                + " --reason` writes the typed form.");
+        }
+        return #out;
+    }
+
     /** The `coco-link v1` marker: one line per link input, in order. */
     public static #String linkHeader() { return "coco-link v1"; }
 

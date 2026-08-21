@@ -1,0 +1,181 @@
+package cajeta.coco.plugin;
+
+import cajeta.coco.util.Glob;
+import cajeta.coco.util.Text;
+import cajeta.lang.String;
+
+/**
+ * One entry of the coverage exclude list.
+ *
+ * ## Why this class exists
+ *
+ * The exclude list had TWO incompatible definitions. `cajeta coverage ignore`
+ * writes, and the plugin README and BuildTool.md document, a typed entry:
+ *
+ *     { "kind": "file", "pattern": "**Generated.cajeta", "reason": "..." }
+ *
+ * The plugin read a plain array of strings. A typed entry's strings sit one
+ * level deeper in the JSON than the reader's depth guard allowed, so the parse
+ * yielded an EMPTY list: every exclusion silently stopped applying. Nothing
+ * failed — the run just measured code it had been told not to, and the
+ * percentage moved. Using the CLI that exists to edit this list was enough to
+ * trigger it.
+ *
+ * ## The three kinds, and what coco can actually honour
+ *
+ *   `file`    — glob against the source path. Module granularity: the module
+ *               is compiled and linked, just never probed.
+ *   `package` — dotted package; `a.b.c` matches files directly in it,
+ *               `a.b.c.*` matches subpackages too. Also module granularity.
+ *   `symbol`  — qualified `owner.method`, matched per FUNCTION at
+ *               instrumentation time, since a module holds many symbols.
+ *
+ * All three remove code from the numerator AND the denominator, which is the
+ * documented contract: opting out does not round the percentage up.
+ *
+ * ## Legacy bare strings keep substring semantics
+ *
+ * `"exclude": ["src/test/"]` is documented as `kind=file` with no reason. It is
+ * NOT re-read as a glob: a glob is anchored, so `src/test/` would match nothing
+ * and every project using the old form would silently start measuring its
+ * tests. Bare strings stay a substring test; the typed `file` form is globbed.
+ */
+public class Exclude {
+
+    public static int32 kindFile()    { return 0; }
+    public static int32 kindPackage() { return 1; }
+    public static int32 kindSymbol()  { return 2; }
+
+    int32 kind;
+    String pattern;
+    String reason;
+    /** True for the bare-string form: substring matching, no reason. */
+    boolean legacy;
+
+    Exclude() {
+        this.kind = 0;
+        this.pattern #= "";
+        this.reason #= "";
+        this.legacy = false;
+    }
+
+    public static #Exclude ofLegacy(String pattern) {
+        Exclude e #= heap Exclude();
+        e.kind = Exclude.kindFile();
+        e.pattern #= pattern.substring(0, pattern.byteLength());
+        e.legacy = true;
+        return #e;
+    }
+
+    public static #Exclude ofTyped(String kind, String pattern, String reason) {
+        Exclude e #= heap Exclude();
+        e.kind = Exclude.kindOf(kind);
+        e.pattern #= pattern.substring(0, pattern.byteLength());
+        e.reason #= reason.substring(0, reason.byteLength());
+        e.legacy = false;
+        return #e;
+    }
+
+    public int32 getKind()      { return this.kind; }
+    public String getPattern()  { return this.pattern; }
+    public String getReason()   { return this.reason; }
+    public boolean isLegacy()   { return this.legacy; }
+
+    /** `file` / `package` / `symbol`; anything else is treated as `file`. */
+    static int32 kindOf(String k) {
+        if (k.equals("package")) { return Exclude.kindPackage(); }
+        if (k.equals("symbol"))  { return Exclude.kindSymbol(); }
+        return Exclude.kindFile();
+    }
+
+    public #String kindName() {
+        if (this.kind == Exclude.kindPackage()) { return "package"; }
+        if (this.kind == Exclude.kindSymbol())  { return "symbol"; }
+        return "file";
+    }
+
+    /**
+     * Does this entry exclude the source file at `path`?
+     *
+     * Symbol entries never match here — they are applied per function, so a
+     * module holding one excluded symbol must still be instrumented for the
+     * rest.
+     */
+    public boolean matchesFile(String path) {
+        if (this.kind == Exclude.kindSymbol()) { return false; }
+        if (this.kind == Exclude.kindPackage()) {
+            return Exclude.matchesPackage(this.pattern, path);
+        }
+        if (this.legacy) {
+            return Text.containsFrom(path, this.pattern, 0);
+        }
+        return Glob.matches(this.pattern, path);
+    }
+
+    /** Does this entry exclude `owner.method`? Only symbol entries can. */
+    public boolean matchesSymbol(String owner, String method) {
+        if (this.kind != Exclude.kindSymbol()) { return false; }
+        // coco's `method` carries its signature — `discountCents(a:int64)` —
+        // but a reader writes `com.example.Foo.getCount`. Match the bare name
+        // first, then the full form, so both spellings work and a pattern that
+        // deliberately names the signature still selects one overload.
+        int64 paren = Text.indexOfFrom(method, "(", 0);
+        String bare #= method.substring(0, method.byteLength());
+        if (paren > 0) { bare #= method.substring(0, (int32) paren); }
+        String shortKey #= owner + "." + bare;
+        if (Glob.matches(this.pattern, shortKey)) { return true; }
+        String fullKey #= owner + "." + method;
+        return Glob.matches(this.pattern, fullKey);
+    }
+
+    /**
+     * `a.b.c` matches files DIRECTLY in that package; `a.b.c.*` matches
+     * subpackages too. Dots become slashes because coco keys everything by
+     * source path.
+     */
+    static boolean matchesPackage(String pattern, String path) {
+        boolean deep = pattern.endsWith(".*");
+        String pkg #= pattern.substring(0, pattern.byteLength());
+        if (deep) { pkg #= pattern.substring(0, pattern.byteLength() - 2); }
+        String prefix #= Exclude.dotsToSlashes(pkg) + "/";
+        if (path.startsWith(prefix) == false) { return false; }
+        if (deep) { return true; }
+        // Directly in the package: no further `/` after the prefix.
+        int32 i = prefix.byteLength();
+        int32 n = path.byteLength();
+        while (i < n) {
+            if (path.byteAt(i) == 47) { return false; }
+            i = i + 1;
+        }
+        return true;
+    }
+
+    static #String dotsToSlashes(String s) {
+        int32 n = s.byteLength();
+        int8[] buf #= heap int8[n];
+        int32 i = 0;
+        while (i < n) {
+            int8 c = s.byteAt(i);
+            if (c == 46) { c = 47; }
+            buf[i] = c;
+            i = i + 1;
+        }
+        return heap String(#buf, n);
+    }
+
+    /**
+     * Reasons the CLI already rejects. Kept in step deliberately: a reason the
+     * CLI refuses to write must not be one the plugin silently accepts, or the
+     * check only applies to people who use the CLI.
+     */
+    public static boolean isGenericReason(String reason) {
+        String r #= reason.trim().toLowerCase();
+        if (r.byteLength() == 0)  { return true; }
+        if (r.equals("wip"))      { return true; }
+        if (r.equals("todo"))     { return true; }
+        if (r.equals("skip"))     { return true; }
+        if (r.equals("fixme"))    { return true; }
+        if (r.equals("tbd"))      { return true; }
+        return false;
+    }
+}

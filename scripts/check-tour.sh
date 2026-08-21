@@ -16,6 +16,15 @@ cd "$(dirname "$0")/../samples/tour"
 CAJETA="${CAJETA:-cajeta}"
 OUT=build/coco
 
+# The plugin is AOT-compiled by the toolchain that runs it, and 0.21.0
+# miscompiles coco's file reads — every verb then throws `uncaught exception
+# (value=0x3)` from whichever method reads a file first. Refuse up front: that
+# stack names coco and blames the wrong thing.
+ver="$("$CAJETA" --version 2>/dev/null | awk '{print $2}')"
+case "$ver" in
+    0.[0-9].*|0.1?.*|0.20.*|0.21.0) echo "check-tour: cajeta $ver is too old — coco needs 0.21.1+" >&2; exit 1 ;;
+esac
+
 "$CAJETA" cover
 "$CAJETA" mutate
 

@@ -30,7 +30,16 @@ public class Request {
     int64 min;
     /** `min-score` — the mutation-score gate, mirroring `min` for coverage. */
     int64 minScore;
-    ArrayList<String> excludes;
+    /**
+     * The exclude list, both spellings.
+     *
+     * Bare strings AND typed `{kind, pattern, reason}` objects — the CLI writes
+     * the typed form and every document describes it, while this reader only
+     * understood strings. A typed entry's strings sit a level deeper in the
+     * JSON, so the depth guard skipped them and the list came back EMPTY:
+     * nothing excluded, no error, a moved percentage.
+     */
+    ArrayList<Exclude> excludes;
 
     // context.toolchain — the build tool's own paths, so orchestration
     // needs no machine configuration.
@@ -68,7 +77,7 @@ public class Request {
         this.contextClasspath #= "";
         this.min = 0;
         this.minScore = 0;
-        this.excludes #= heap ArrayList<String>();
+        this.excludes #= heap ArrayList<Exclude>();
         this.cajetaBin #= "cajeta";
         this.llcBin #= "llc";
         this.llvmDisBin #= "llvm-dis";
@@ -90,13 +99,33 @@ public class Request {
         int32 field = 0;
         boolean inExclude = false;
         boolean inDeps = false;
+        // Typed-entry accumulation. An entry is only committed at its closing
+        // `}`, so a half-read object can never reach the exclude list.
+        boolean inExcludeObject = false;
+        int32 exField = 0;
+        String exKind #= "file";
+        String exPattern #= "";
+        String exReason #= "";
 
         int32 t = (int32) jr.next();
         while (t != 9) {
             if (t == 0 || t == 2) {                       // { or [
                 depth = depth + 1;
+                if (t == 0 && inExclude && depth == 4) {
+                    inExcludeObject = true;
+                    exField = 0;
+                    exKind #= "file";
+                    exPattern #= "";
+                    exReason #= "";
+                }
             } else if (t == 1 || t == 3) {                // } or ]
                 depth = depth - 1;
+                if (t == 1 && inExcludeObject && depth == 3) {
+                    inExcludeObject = false;
+                    if (exPattern.byteLength() > 0) {
+                        r.excludes.add(Exclude.ofTyped(exKind, exPattern, exReason));
+                    }
+                }
                 if (t == 3) { inExclude = false; inDeps = false; }
                 if (depth == 2) { sub = 0; }
                 if (depth == 1) { section = 0; sub = 0; }
@@ -107,6 +136,11 @@ public class Request {
                     else if (name.equals("params")) { section = 1; field = 0; }
                     else if (name.equals("context")) { section = 2; field = 0; }
                     else { field = 0; }
+                } else if (inExcludeObject && depth == 4 && section == 1) {
+                    if (name.equals("kind")) { exField = 1; }
+                    else if (name.equals("pattern")) { exField = 2; }
+                    else if (name.equals("reason")) { exField = 3; }
+                    else { exField = 0; }
                 } else if (depth == 2 && section == 1) {
                     if (name.equals("src")) { field = 2; }
                     else if (name.equals("entry")) { field = 3; }
@@ -138,8 +172,17 @@ public class Request {
                     field = 0;
                 }
             } else if (t == 5) {                          // STRING
-                if (inExclude && depth == 3 && section == 1) {
-                    r.excludes.add(jr.currentString());
+                if (inExcludeObject && section == 1) {
+                    if (exField == 1) { exKind #= jr.currentString(); }
+                    else if (exField == 2) { exPattern #= jr.currentString(); }
+                    else if (exField == 3) { exReason #= jr.currentString(); }
+                    exField = 0;
+                } else if (inExclude && depth == 3 && section == 1) {
+                    // Back-compat bare string: kind=file, no reason, SUBSTRING
+                    // matching. Not re-read as a glob — an anchored glob would
+                    // match nothing and silently un-exclude every existing
+                    // project's tests.
+                    r.excludes.add(Exclude.ofLegacy(jr.currentString()));
                 } else if (inDeps && depth == 4 && section == 2) {
                     r.pluginDeps.add(jr.currentString());
                 } else if (field == 1) { r.action #= jr.currentString(); }

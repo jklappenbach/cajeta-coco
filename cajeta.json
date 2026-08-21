@@ -4,7 +4,7 @@
 
     "details": {
         "name":               "dev.cajeta.coco",
-        "version":            "0.5.0",
+        "version":            "0.5.1",
         "description":        "cajeta-coco — coverage, dead-code and mutation analysis for Cajeta",
         "license":            "Apache-2.0",
         "authors":            ["sample"],

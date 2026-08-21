@@ -21,7 +21,7 @@
     // params at run time — so the version below is written once and the
     // dependency picks it up.
     "properties": {
-        "unit-version": "0.2.3"
+        "unit-cja": "${env.HOME}/.olla/dev.cajeta.unit/0.2.3/dev.cajeta.unit-0.2.3.cja"
     },
 
     "details": {
@@ -98,23 +98,32 @@
                 // The IDE reads this same path (see README).
                 "out":   "build/coco",
 
-                // Path fragments left UNINSTRUMENTED. The tests are excluded
-                // for two reasons: their own lines would otherwise inflate the
-                // percentage with code that is by definition executed, and —
-                // less obvious — instrumented test bodies each own unique
-                // lines, which would make every test look like it contributes
-                // unique coverage and destroy the redundancy signal the Tests
-                // tab exists to give (see CouponTests).
+                // What is left UNINSTRUMENTED — the TYPED form the CLI
+                // writes (`cajeta coverage ignore --kind --pattern --reason`)
+                // and every document describes. Three kinds:
+                //
+                //   file    — glob over the source path
+                //   package — dotted; `a.b.c` is that package, `a.b.c.*` also
+                //             its subpackages
+                //   symbol  — qualified owner.method, dropped per FUNCTION
+                //             rather than per module
+                //
+                // `reason` is mandatory and shows up on every diff that touches
+                // this list, so it has to justify itself. A bare string still
+                // works and means kind=file with no reason, but it is matched
+                // as a SUBSTRING rather than a glob and warns once per entry.
                 //
                 // An exclusion removes code from BOTH numerator and
                 // denominator: it opts out of measurement, it does not round
                 // the number up.
-                //
-                // The framework itself is excluded for the same reason every
-                // coverage tool excludes its own harness: `dev.cajeta.unit` is
-                // somebody else's tested code, and leaving it in measures the
-                // library instead of the project.
-                "exclude": ["tour/coco/tests/", "dev/cajeta/unit/"],
+                "exclude": [
+                    { "kind":    "package",
+                      "pattern": "tour.coco.tests.*",
+                      "reason":  "the suite itself — its lines are executed by definition, and instrumented test bodies each own unique lines, which would make every test look like it contributes unique coverage and destroy the redundancy signal the Tests tab exists to give" },
+                    { "kind":    "package",
+                      "pattern": "dev.cajeta.unit.*",
+                      "reason":  "the test framework is somebody else's tested code; leaving it in measures the library instead of this project" }
+                ],
 
                 // The gate. Below this, `cajeta.coverage.report` fails the
                 // task — JaCoCo `check` semantics, so 35.9% fails a min of 36.
