@@ -28,10 +28,24 @@ public class Request {
     String out;
     String cocoHome;
     int64 min;
+    /** `min-score` — the mutation-score gate, mirroring `min` for coverage. */
+    int64 minScore;
     ArrayList<String> excludes;
 
     // context.toolchain — the build tool's own paths, so orchestration
     // needs no machine configuration.
+    /**
+     * context.classpath — the CONSUMER's resolved dependency archives.
+     *
+     * Distinct from `classpath` above, which is what the task explicitly
+     * passed. The build tool now sends the same comma-joined string it gives
+     * the compiler as `--classpath`, so a plugin that compiles the consumer's
+     * sources no longer needs the archive paths hand-written into the task.
+     * `params.classpath` still wins when set: an explicit answer beats a
+     * derived one.
+     */
+    String contextClasspath;
+
     String cajetaBin;
     String llcBin;
     String llvmDisBin;
@@ -51,7 +65,9 @@ public class Request {
         this.profile #= "";
         this.out #= "build/coco";
         this.cocoHome #= "";
+        this.contextClasspath #= "";
         this.min = 0;
+        this.minScore = 0;
         this.excludes #= heap ArrayList<String>();
         this.cajetaBin #= "cajeta";
         this.llcBin #= "llc";
@@ -99,10 +115,12 @@ public class Request {
                     else if (name.equals("out")) { field = 6; }
                     else if (name.equals("coco-home")) { field = 7; }
                     else if (name.equals("min")) { field = 8; }
+                    else if (name.equals("min-score")) { field = 16; }
                     else if (name.equals("exclude")) { inExclude = true; field = 0; }
                     else { field = 0; }
                 } else if (depth == 2 && section == 2) {
                     if (name.equals("workdir")) { field = 9; }
+                    else if (name.equals("classpath")) { field = 15; }
                     else if (name.equals("toolchain")) { sub = 1; field = 0; }
                     else if (name.equals("plugin")) { sub = 2; field = 0; }
                     else { field = 0; }
@@ -137,14 +155,24 @@ public class Request {
                 else if (field == 12) { r.llvmDisBin #= jr.currentString(); }
                 else if (field == 13) { r.ccBin #= jr.currentString(); }
                 else if (field == 14) { r.pluginArtifact #= jr.currentString(); }
+                else if (field == 15) { r.contextClasspath #= jr.currentString(); }
                 field = 0;
             } else if (t == 6) {                          // NUMBER
                 if (field == 8) { r.min = jr.currentNumberAsInt64(); }
+                else if (field == 16) { r.minScore = jr.currentNumberAsInt64(); }
                 field = 0;
             } else {
                 field = 0;
             }
             t = (int32) jr.next();
+        }
+        // An explicit params.classpath wins; otherwise inherit the consumer's
+        // resolved one. Folding it in HERE rather than at each use keeps every
+        // consumer of `r.classpath` — addFlags, classpathObjects, archiveWith
+        // — unchanged and unable to disagree about which one applies.
+        if (r.classpath.byteLength() == 0) {
+            r.classpath #= r.contextClasspath.substring(
+                0, r.contextClasspath.byteLength());
         }
         return #r;
     }

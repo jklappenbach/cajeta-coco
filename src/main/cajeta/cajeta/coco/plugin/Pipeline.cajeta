@@ -78,14 +78,28 @@ public class Pipeline {
         a2.add(base + "/ir");
         if (Pipeline.spawnOrFail(r, a2, "IR pass") == false) { return false; }
 
-        // [2] Modules from the xref; instrument in-memory, one id space.
-        ArrayList<String> modules #= Pipeline.moduleFiles(base, r);
+        // [2] Modules from the xref. TWO lists, and the difference between
+        // them is load-bearing: `linkModules` is every module the program is
+        // made of, `modules` is the subset that gets probes.
+        //
+        // Excluding used to drop a module from BOTH, which linked a DIFFERENT
+        // PROGRAM than the one the developer asked to measure. Found by
+        // samples/tour/coco, which excludes its own test package: nine of its
+        // twelve tests vanished from the binary, `Class.allClasses()` could not
+        // find them, and the run reported 12% coverage over code that had
+        // simply never been given the chance to execute. Nothing failed — that
+        // is what made it dangerous. `bin/coco` always lowered every module and
+        // only skipped instrumentation; this is the in-engine pipeline catching
+        // up to it.
+        ArrayList<String> linkModules #= Pipeline.moduleFiles(base, r, false);
+        ArrayList<String> modules #= Pipeline.moduleFiles(base, r, true);
         if (modules.count() == 0) {
             PluginHost.resultError("instrument: no instrumentable modules found");
             return false;
         }
         PluginHost.log("coco: [3/6] instrumenting "
-                       + Text.fromInt((int64) modules.count()) + " modules");
+                       + Text.fromInt((int64) modules.count()) + " of "
+                       + Text.fromInt((int64) linkModules.count()) + " modules");
 
         IdGen ids = heap IdGen();
         ArrayList<Site> sites #= heap ArrayList<Site>();
@@ -135,8 +149,8 @@ public class Pipeline {
         ArrayList<String> objs #= heap ArrayList<String>();
         objs.add(base + "/exe/cajeta.runtime.__stdlib__.o");
         mi = 0;
-        while (mi < modules.count()) {
-            String rel = modules.get(mi);
+        while (mi < linkModules.count()) {
+            String rel = linkModules.get(mi);
             String obj #= base + "/obj/" + Pipeline.flatten(rel) + ".o";
             ArrayList<String> lc #= heap ArrayList<String>();
             lc.add(r.llcBin.substring(0, r.llcBin.byteLength()));
@@ -155,8 +169,24 @@ public class Pipeline {
         }
 
         // Classpath classes the reference pass compiled (dotted-name
-        // objects), minus the hooked Runner.
-        Pipeline.classpathObjects(r, base, attribution, objs);
+        // objects), minus the hooked Runner and minus anything the IR pass
+        // already emitted — those are lowered above, and adding both spellings
+        // of the same class is a duplicate-symbol link failure.
+        Pipeline.classpathObjects(r, base, attribution, objs, linkModules);
+
+        // The two toolchain-constant inputs the reference pass produced.
+        objs.add(base + "/exe/__cajeta_tls.o");
+        objs.add(base + "/exe/__cajeta_xpu_optix_stub.c");
+
+        // [4b] Record the link line before using it.
+        //
+        // `mutate` has to relink the same program with ONE object swapped, and
+        // it is a separate invocation: it cannot see `attribution`, or which
+        // classpath archives contributed objects, and `cajeta.io.file` has no
+        // directory walk to rediscover them with. Writing the list down means
+        // mutate REPLAYS the link instead of reconstructing it — the two can
+        // never drift, because there is only one of them.
+        Pipeline.writeLinkLine(base, objs);
 
         // [5] Link.
         PluginHost.log("coco: [5/6] linking");
@@ -168,8 +198,6 @@ public class Pipeline {
             link.add(o.substring(0, o.byteLength()));
             oi = oi + 1;
         }
-        link.add(base + "/exe/__cajeta_tls.o");
-        link.add(base + "/exe/__cajeta_xpu_optix_stub.c");
         link.add("-o");
         link.add(base + "/measured");
         link.add("-lssl");
@@ -215,7 +243,16 @@ public class Pipeline {
      * files from the xref's declarations, filtered (probe runtime never;
      * exclude fragments), confirmed by the emitted file actually existing.
      */
-    static #ArrayList<String> moduleFiles(String base, Request r) {
+    /**
+     * The modules under `base/ir`, as paths relative to it.
+     *
+     * `applyExcludes == false` asks for EVERY module — what the program is
+     * linked from. `true` applies the request's `exclude` fragments, giving
+     * the subset that carries probes. coco's own probe runtime is in neither:
+     * instrumenting it would recurse, and it is linked separately.
+     */
+    static #ArrayList<String> moduleFiles(String base, Request r,
+                                          boolean applyExcludes) {
         String xrefText #= Io.readAll(base + "/xref.json");
         ArrayList<String> files #= Pipeline.declFiles(xrefText);
         ArrayList<String> out #= heap ArrayList<String>();
@@ -224,10 +261,12 @@ public class Pipeline {
             String f = files.get(i);
             boolean keep = f.endsWith(".cajeta");
             if (keep && Text.containsFrom(f, "cajeta/coco/rt/", 0)) { keep = false; }
-            int32 e = 0;
-            while (keep && e < r.excludes.count()) {
-                if (Text.containsFrom(f, r.excludes.get(e), 0)) { keep = false; }
-                e = e + 1;
+            if (applyExcludes) {
+                int32 e = 0;
+                while (keep && e < r.excludes.count()) {
+                    if (Text.containsFrom(f, r.excludes.get(e), 0)) { keep = false; }
+                    e = e + 1;
+                }
             }
             if (keep) {
                 String rel #= f.substring(0, f.byteLength() - 7) + ".ll";
@@ -242,6 +281,44 @@ public class Pipeline {
     }
 
     /** Unique declaration `file` values from an xref document. */
+    /** The `coco-link v1` marker: one line per link input, in order. */
+    public static #String linkHeader() { return "coco-link v1"; }
+
+    static void writeLinkLine(String base, ArrayList<String> objs) {
+        StringBuilder sb #= heap StringBuilder();
+        sb.append(Pipeline.linkHeader());
+        sb.append("\n");
+        int32 i = 0;
+        while (i < objs.count()) {
+            sb.append(objs.get(i));
+            sb.append("\n");
+            i = i + 1;
+        }
+        Io.writeAll(base + "/link.tsv", sb.toString());
+    }
+
+    /**
+     * The link inputs `instrument` recorded, in order. Empty when the file is
+     * absent or carries a header this build does not know — a link line read
+     * under the wrong assumptions produces a binary that is not the measured
+     * program, which is exactly the failure mode worth refusing.
+     */
+    public static #ArrayList<String> readLinkLine(String base) {
+        ArrayList<String> out #= heap ArrayList<String>();
+        String text #= Io.readAll(base + "/link.tsv");
+        if (text.byteLength() == 0) { return #out; }
+        ArrayList<String> lines #= Text.splitLines(text);
+        if (lines.count() < 1) { return #out; }
+        if (lines.get(0).equals(Pipeline.linkHeader()) == false) { return #out; }
+        int32 i = 1;
+        while (i < lines.count()) {
+            String l = lines.get(i);
+            if (l.byteLength() > 0) { out.add(l.substring(0, l.byteLength())); }
+            i = i + 1;
+        }
+        return #out;
+    }
+
     static #ArrayList<String> declFiles(String xrefText) {
         ArrayList<String> out #= heap ArrayList<String>();
         // Cheap streaming scan over the raw text for `"file":"..."` — every
@@ -410,7 +487,8 @@ public class Pipeline {
      * object replaces it.
      */
     static void classpathObjects(Request r, String base, boolean hooked,
-                                 ArrayList<String> objs) {
+                                 ArrayList<String> objs,
+                                 ArrayList<String> lowered) {
         int64 start = 0;
         int32 n = r.classpath.byteLength();
         while (start < n) {
@@ -439,6 +517,12 @@ public class Pipeline {
                             boolean skip = false;
                             if (hooked && cls.equals("dev.cajeta.unit.Runner")) {
                                 skip = true;
+                            }
+                            String rel #= Pipeline.dotsToPath(cls) + ".ll";
+                            int32 li2 = 0;
+                            while (skip == false && li2 < lowered.count()) {
+                                if (lowered.get(li2).equals(rel)) { skip = true; }
+                                li2 = li2 + 1;
                             }
                             if (skip == false) {
                                 objs.add(base + "/exe/" + cls + ".o");

@@ -129,7 +129,12 @@ public class SiteTable {
     }
 
     /** Split one record on tabs, preserving empty trailing fields. */
-    static #ArrayList<String> splitTabs(String s) {
+    /**
+     * Split one TSV row. Public because every consumer of coco's tab-separated
+     * artifacts needs it and a second copy is a second place for the field
+     * count to drift.
+     */
+    public static #ArrayList<String> splitTabs(String s) {
         ArrayList<String> out #= heap ArrayList<String>();
         int32 n = s.byteLength();
         int32 start = 0;

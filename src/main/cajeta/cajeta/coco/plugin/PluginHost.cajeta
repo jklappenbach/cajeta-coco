@@ -41,6 +41,11 @@ import cajeta.process.ProcessResult;
  *       exist is that it may spawn things. Fails the task when the suite
  *       fails.
  *
+ *   cajeta.coverage.mutate — mutation testing over a completed run:
+ *       every instrumented module's icmp predicates swapped one at a time,
+ *       relinked from the recorded link line and re-run. Answers what
+ *       coverage cannot — whether anything ASSERTED on a line that ran.
+ *
  *   cajeta.coverage.report — in-process render (this binary IS the
  *       report engine): HTML + lcov + SARIF from the run's artifacts,
  *       then the `min` gate — below-threshold line coverage returns a
@@ -49,7 +54,10 @@ import cajeta.process.ProcessResult;
  *
  * Params (config block or per-action): src, entry, classpath, profile,
  * exclude[], out (default build/coco), coco-home (checkout holding
- * bin/coco), min (percent gate, report only).
+ * bin/coco), min (percent gate, report only), min-score (mutation-score
+ * gate, mutate only). `classpath` falls back to context.classpath — the
+ * consumer's resolved dependency archives, which the build tool now sends —
+ * so a task no longer has to hand-write archive paths.
  */
 public class PluginHost {
 
@@ -68,6 +76,8 @@ public class PluginHost {
             PluginHost.instrument(r);
         } else if (r.action.equals("cajeta.coverage.report")) {
             PluginHost.report(r);
+        } else if (r.action.equals("cajeta.coverage.mutate")) {
+            PluginHost.mutate(r);
         } else {
             PluginHost.resultError("unknown action: " + r.action);
         }
@@ -85,6 +95,14 @@ public class PluginHost {
         // dependency archive. `coco-home` is accepted but ignored — the
         // checkout-delegation era is over.
         if (Pipeline.run(r)) {
+            PluginHost.resultOk();
+        }
+    }
+
+    // ── mutate ─────────────────────────────────────────────────
+
+    static void mutate(Request r) {
+        if (Mutate.run(r)) {
             PluginHost.resultOk();
         }
     }

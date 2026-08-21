@@ -385,6 +385,38 @@ public class Instrumenter {
      * the authority here. The trailing `i64 0` is the borrow title word,
      * matching how Runner's own callers pass String arguments.
      *
+     * ## KNOWN: a hooked build crashes when a test FAILS
+     *
+     * Measured 2026-08-21, 3/3 either way, same objects with only this patch
+     * swapped in and out:
+     *
+     *   hooked Runner   -> SIGSEGV, fault addr 0x8, after the first FAILING
+     *                      test; per-test profiles for the passing ones are
+     *                      already on disk
+     *   unhooked Runner -> the suite reports its failures and exits 1
+     *
+     * The fault is NOT in `onTest` and not in `recordResult`. addr2line puts
+     * it in `dev.cajeta.unit.Runner::runOne` itself, below the segv handler,
+     * with no `recordResult` frame on the stack — so it happens in runOne's
+     * own epilogue, walking its drop chain, on the path where an exception was
+     * caught. `runOne` keeps `msg = e.message`, a BORROW of the caught
+     * exception's message, past the catch scope that owns `e`; `onTest`
+     * allocates and writes a file, which perturbs the allocator enough to turn
+     * a latent use-after-free into a fault. A green suite never executes that
+     * path, which is why this surfaced as "mutation kills produce SIGSEGV"
+     * rather than as anything about the hook.
+     *
+     * Moving the call to the function exit (before `__cajeta_drop_pop_run`,
+     * after `recordPass`/`recordFail` consume their arguments) was tried and
+     * changed NOTHING — still 3/3. So the placement is not the lever and the
+     * original position stands; the fix belongs in cajeta-unit, which must own
+     * the message rather than borrow it.
+     *
+     * Consequence for verdicts: a killed mutant may be killed by this crash
+     * rather than by an assertion. The verdict is still correct — the exit
+     * code moved, which is what "killed" means — but the SIGNAL is weaker than
+     * it looks.
+     *
      * Returns empty when the expected shape is not found — the driver treats
      * that as "attribution unavailable" rather than linking a bad patch.
      */

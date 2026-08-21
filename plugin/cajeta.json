@@ -1,7 +1,7 @@
 {
     "details": {
         "name":               "dev.cajeta.coverage",
-        "version":            "0.3.0",
+        "version":            "0.5.0",
         "description":        "Coverage instrumentation, reporting and gating for cajeta test tasks — backed by cajeta-coco",
         "license":            "Apache-2.0",
         "authors":            ["jklappenbach"],
@@ -12,11 +12,13 @@
             "main": "cajeta.coco.plugin.PluginHost.serve",
             "actions": [
                 "cajeta.coverage.instrument",
-                "cajeta.coverage.report"
+                "cajeta.coverage.report",
+                "cajeta.coverage.mutate"
             ],
             "entries": {
                 "cajeta.coverage.instrument": "cajeta.coco.plugin.PluginHost::serve",
-                "cajeta.coverage.report":     "cajeta.coco.plugin.PluginHost::serve"
+                "cajeta.coverage.report":     "cajeta.coco.plugin.PluginHost::serve",
+                "cajeta.coverage.mutate":     "cajeta.coco.plugin.PluginHost::serve"
             }
         }
     },
@@ -24,7 +26,7 @@
     "settings": {
         "capabilities": ["process", "filesystem"],
         "dependencies": {
-            "dev.cajeta.coco": "0.2.0",
+            "dev.cajeta.coco": "0.2.2",
             "dev.cajeta.xref": "0.1.0"
         },
         "repositories": [

@@ -1,0 +1,308 @@
+package cajeta.coco.plugin;
+
+import cajeta.coco.ir.Mutator;
+import cajeta.coco.model.HitProfile;
+import cajeta.coco.model.Site;
+import cajeta.coco.model.SiteTable;
+import cajeta.coco.util.Io;
+import cajeta.coco.util.Text;
+import cajeta.collection.ArrayList;
+import cajeta.lang.String;
+import cajeta.lang.StringBuilder;
+import cajeta.process.ProcessResult;
+
+/**
+ * `cajeta.coverage.mutate` — mutation testing as a build-tool action.
+ *
+ * Coverage says a line ran. It cannot say anything *asserted* on it, and that
+ * blind spot is the reason this exists: mutate the program, re-run the suite,
+ * and a mutant the suite fails to notice is a line that executes without being
+ * verified.
+ *
+ * ## Why this is a separate action and not part of `instrument`
+ *
+ * One mutant is one `llc` plus one link plus one suite run. That is fast — well
+ * under a second — but it is paid per mutation site, and an ordinary coverage
+ * run should not. Keeping it separate also keeps `instrument`'s contract
+ * ("compile, run, measure") honest.
+ *
+ * ## Why it replays the link line instead of rebuilding it
+ *
+ * A mutant is the measured program with exactly ONE object swapped. Everything
+ * else — the stdlib object carrying the synthesized `main`, the probe runtime,
+ * the hooked test runner, the objects the reference pass compiled out of
+ * classpath archives — has to be identical, or the verdict is about a different
+ * program. `instrument` writes `link.tsv` (`coco-link v1`) for precisely this,
+ * because a separate invocation cannot see which of those applied and
+ * `cajeta.io.file` has no directory walk to rediscover them with. Replaying one
+ * recorded list means the two link lines cannot drift.
+ *
+ * ## The coverage gate
+ *
+ * A mutant in code the suite never executed cannot be killed. Counting it as a
+ * survivor would blame the assertions for what is a coverage problem, so it is
+ * recorded as `skipped-uncovered` and excluded from the score. The other three
+ * views already report that code.
+ */
+public class Mutate {
+
+    /** The `coco-mutation v1` marker, then the column header. */
+    public static #String header() { return "coco-mutation v1"; }
+    public static #String columns() {
+        return "module\tsrcLine\tmutation\tverdict\tmethod";
+    }
+
+    public static boolean run(Request r) {
+        String base #= r.workdir + "/" + r.out;
+
+        // The mutant scratch dir, and a clean one: a stale mutant binary from
+        // an interrupted run would be executed as if it were this run's.
+        Pipeline.shell(r, "rm -rf '" + base + "/mut' && mkdir -p '"
+                       + base + "/mut'");
+
+        String sitesText #= Io.readAll(base + "/sites.tsv");
+        if (sitesText.byteLength() == 0) {
+            PluginHost.resultError("mutate: no sites at " + r.out
+                                   + "/sites.tsv (did instrument run?)");
+            return false;
+        }
+        ArrayList<Site> sites #= SiteTable.decode(sitesText);
+
+        // The merged profile when a run tracked per-test data, exactly as
+        // `report` and the IDE prefer it. Reading the plain one instead gets
+        // the exit residue, and the gate below then calls every mutant
+        // uncovered: a score of 0/N that reads as "nothing to fix" and means
+        // "nothing was measured".
+        String profText #= Io.readAll(base + "/run/coco.merged.profile");
+        if (profText.byteLength() == 0) {
+            profText #= Io.readAll(base + "/run/coco.profile");
+        }
+        if (profText.byteLength() == 0) {
+            PluginHost.resultError("mutate: no profile under " + r.out + "/run/");
+            return false;
+        }
+        HitProfile profile #= HitProfile.decode(profText, "all");
+
+        ArrayList<String> link #= Pipeline.readLinkLine(base);
+        if (link.count() == 0) {
+            PluginHost.resultError(
+                "mutate: no usable " + r.out + "/link.tsv — re-run "
+                + "cajeta.coverage.instrument to record the link line");
+            return false;
+        }
+
+        // Only what carries probes. An excluded module contributed no site
+        // rows, so the site table IS the instrumented set — no need to restate
+        // the exclude list, and no way for the two to disagree. Mutating
+        // excluded code is doubly wrong: the suite cannot kill a change to its
+        // own assertions, and excluded code was excluded on purpose.
+        ArrayList<String> modules #= Mutate.instrumentedModules(sites);
+        if (modules.count() == 0) {
+            PluginHost.resultError("mutate: the site table names no modules");
+            return false;
+        }
+
+        // Baseline: what the suite's exit code is with nothing mutated. Every
+        // verdict below is a comparison against this rather than against a
+        // hardcoded 0, so a suite that is red for unrelated reasons still
+        // yields meaningful verdicts.
+        int64 baseline = Mutate.runMeasured(base);
+        PluginHost.log("coco: baseline exit " + Text.fromInt(baseline));
+
+        StringBuilder results #= heap StringBuilder();
+        results.append(Mutate.header());
+        results.append("\n");
+        results.append(Mutate.columns());
+        results.append("\n");
+
+        int64 killed = 0;
+        int64 survived = 0;
+        int64 skipped = 0;
+        StringBuilder survivors #= heap StringBuilder();
+
+        int32 mi = 0;
+        while (mi < modules.count()) {
+            String rel = modules.get(mi);
+            mi = mi + 1;
+            String llPath #= base + "/ir/" + rel;
+            String llText #= Io.readAll(llPath);
+            if (llText.byteLength() == 0) { continue; }
+
+            String myObj #= base + "/obj/" + Pipeline.flatten(rel) + ".o";
+            String listing #= Mutator.enumerate(llText);
+            ArrayList<String> rows #= Text.splitLines(listing);
+
+            int32 ri = 0;
+            while (ri < rows.count()) {
+                String row = rows.get(ri);
+                ri = ri + 1;
+                if (row.byteLength() == 0) { continue; }
+                ArrayList<String> f #= SiteTable.splitTabs(row);
+                if (f.count() < 6) { continue; }
+
+                int64 idx = Text.parseIntAt(f.get(0), 0);
+                String srcLine = f.get(1);
+                int64 probeId = Text.parseIntAt(f.get(2), 0);
+                String mutation #= f.get(3) + "->" + f.get(4);
+                String method = f.get(5);
+
+                if (probeId >= 0 && profile.covered(probeId) == false) {
+                    skipped = skipped + 1;
+                    Mutate.appendRow(results, rel, srcLine, mutation,
+                                     "skipped-uncovered", method);
+                    continue;
+                }
+
+                String mutated #= Mutator.apply(llText, idx);
+                Io.writeAll(base + "/mut/mutant.ll", mutated);
+
+                if (Mutate.lower(r, base) == false) { return false; }
+                if (Mutate.link(r, base, link, myObj) == false) { return false; }
+
+                int64 code = Mutate.runMutant(base);
+                if (code != baseline) {
+                    killed = killed + 1;
+                    Mutate.appendRow(results, rel, srcLine, mutation,
+                                     "killed", method);
+                } else {
+                    survived = survived + 1;
+                    Mutate.appendRow(results, rel, srcLine, mutation,
+                                     "SURVIVED", method);
+                    survivors.append("  " + rel + ":" + srcLine + "  "
+                                     + mutation + " in " + method + "\n");
+                }
+            }
+        }
+
+        Io.writeAll(base + "/mutation.tsv", results.toString());
+
+        int64 total = killed + survived;
+        PluginHost.log("coco: mutation score: " + Text.fromInt(killed) + "/"
+                       + Text.fromInt(total) + " killed ("
+                       + Text.fromInt(skipped) + " skipped as uncovered)");
+        if (survived > 0) {
+            PluginHost.log("coco: SURVIVING mutants — these behavior changes "
+                           + "went unnoticed by the suite:");
+            PluginHost.log(survivors.toString());
+        }
+        PluginHost.output("mutation-path", r.out + "/mutation.tsv");
+        PluginHost.output("killed", Text.fromInt(killed));
+        PluginHost.output("survived", Text.fromInt(survived));
+        PluginHost.output("skipped", Text.fromInt(skipped));
+        PluginHost.output("score", Text.percent(killed, total));
+
+        // `min-score` gates the same way `min` gates coverage: a mutation
+        // score is only useful if something can fail on it. Off by default —
+        // most projects need to see their number before they can defend one.
+        if (r.minScore > 0) {
+            int64 gate = 0;
+            if (total > 0) { gate = (killed * 100) / total; }
+            if (gate < r.minScore) {
+                PluginHost.resultError(
+                    "mutation score " + Text.percent(killed, total)
+                    + "% is below min-score " + Text.fromInt(r.minScore) + "%");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // ── steps ──────────────────────────────────────────────────
+
+    /** `llc` the mutant module to an object beside it. */
+    static boolean lower(Request r, String base) {
+        ArrayList<String> lc #= heap ArrayList<String>();
+        lc.add(r.llcBin.substring(0, r.llcBin.byteLength()));
+        lc.add("-filetype=obj");
+        lc.add("-relocation-model=pic");
+        lc.add(base + "/mut/mutant.ll");
+        lc.add("-o");
+        lc.add(base + "/mut/mutant.o");
+        return Pipeline.spawnOrFail(r, lc, "llc mutant");
+    }
+
+    /**
+     * Relink the recorded line with `replaced` swapped for the mutant object.
+     *
+     * The swap is positional, not additive: adding the mutant and leaving the
+     * original in would link both definitions of every symbol in that module.
+     */
+    static boolean link(Request r, String base, ArrayList<String> recorded,
+                        String replaced) {
+        ArrayList<String> cc #= heap ArrayList<String>();
+        cc.add(r.ccBin.substring(0, r.ccBin.byteLength()));
+        int32 i = 0;
+        while (i < recorded.count()) {
+            String o = recorded.get(i);
+            if (o.equals(replaced)) {
+                cc.add(base + "/mut/mutant.o");
+            } else {
+                cc.add(o.substring(0, o.byteLength()));
+            }
+            i = i + 1;
+        }
+        cc.add("-o");
+        cc.add(base + "/mut/mutant");
+        cc.add("-lssl");
+        cc.add("-lcrypto");
+        cc.add("-lpthread");
+        cc.add("-lm");
+        cc.add("-ldl");
+        return Pipeline.spawnOrFail(r, cc, "link mutant");
+    }
+
+    /**
+     * Run a binary in `base/mut` and return its exit code.
+     *
+     * The cwd matters: the probe runtime writes its profile into the working
+     * directory, and running mutants in `base/run` would overwrite the very
+     * profile the coverage gate is reading.
+     */
+    static int64 runBinary(String base, String rel) {
+        ArrayList<String> v #= heap ArrayList<String>();
+        v.add(rel.substring(0, rel.byteLength()));
+        ProcessResult res #= Pipeline.spawnIn(v, base + "/mut");
+        if (res.launched() == false) { return -1; }
+        return (int64) res.code();
+    }
+
+    static int64 runMeasured(String base) { return Mutate.runBinary(base, "../measured"); }
+    static int64 runMutant(String base)   { return Mutate.runBinary(base, "./mutant"); }
+
+    // ── helpers ────────────────────────────────────────────────
+
+    static void appendRow(StringBuilder sb, String module, String srcLine,
+                          String mutation, String verdict, String method) {
+        sb.append(module);
+        sb.append("\t");
+        sb.append(srcLine);
+        sb.append("\t");
+        sb.append(mutation);
+        sb.append("\t");
+        sb.append(verdict);
+        sb.append("\t");
+        sb.append(method);
+        sb.append("\n");
+    }
+
+    /** Distinct `<file>.ll` paths named by the site table, in first-seen order. */
+    static #ArrayList<String> instrumentedModules(ArrayList<Site> sites) {
+        ArrayList<String> out #= heap ArrayList<String>();
+        int32 i = 0;
+        while (i < sites.count()) {
+            Site s = sites.get(i);
+            i = i + 1;
+            String f = s.getFile();
+            if (f.endsWith(".cajeta") == false) { continue; }
+            String rel #= f.substring(0, f.byteLength() - 7) + ".ll";
+            boolean seen = false;
+            int32 j = 0;
+            while (seen == false && j < out.count()) {
+                if (out.get(j).equals(rel)) { seen = true; }
+                j = j + 1;
+            }
+            if (seen == false) { out.add(#rel); }
+        }
+        return #out;
+    }
+}

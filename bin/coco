@@ -291,8 +291,16 @@ case "$CMD" in
     # around. Mutants in code the suite never executed are skipped: they
     # cannot be killed, and the coverage report already names that code.
     [ -f "$OUT/sites.tsv" ] || die "no run artifacts in $OUT (run 'coco run' first)"
-    PROFILE="$OUT/run/coco.profile"
-    [ -f "$PROFILE" ] || die "no profile at $PROFILE"
+    # Prefer the attribution-merged profile, exactly as `report` and the IDE
+    # plugin do. Reading the plain one after a run that tracked per-test data
+    # gets the EXIT RESIDUE, not the run: the coverage gate below then sees
+    # nothing as covered and reports every mutant as skipped-uncovered — a
+    # mutation score of 0/N that reads like "nothing to fix" and is really
+    # "nothing was measured".
+    PROFILE="$OUT/run/coco.merged.profile"
+    [ -f "$PROFILE" ] || PROFILE="$OUT/run/coco.profile"
+    [ -f "$PROFILE" ] || die "no profile at $OUT/run/"
+    echo "coco: mutating against $(basename "$PROFILE")"
     MUTDIR="$OUT/mut"
     rm -rf "$MUTDIR"; mkdir -p "$MUTDIR"
 
@@ -319,6 +327,17 @@ case "$CMD" in
         [ -f "$OUT/obj/$(echo "$xrel" | tr './' '__').ll.o" ] || LINK_EXTRA+=("$xo")
     done < <(find "$EXEDIR" -name '*.o' \
         ! -name 'cajeta.runtime.__stdlib__.o' ! -name '__cajeta_tls.o' | sort)
+
+    # Mutate only what was INSTRUMENTED. `--exclude` is a flag of `coco run`,
+    # and mutate is a separate invocation that cannot see it — but sites.tsv
+    # can: an excluded module contributed no probe rows, so the file column of
+    # the site table IS the instrumented set. Without this, mutate rewrote the
+    # test suite's own assertions and reported every one as a survivor, which
+    # is doubly wrong: a mutated assertion cannot be killed by the suite it
+    # belongs to, and excluded code was excluded on purpose.
+    cut -f5 "$OUT/sites.tsv" | tail -n +2 | sort -u \
+        | sed 's/\.cajeta$/.ll/' > "$MUTDIR/instrumented.txt"
+    [ -s "$MUTDIR/instrumented.txt" ] || die "sites.tsv names no source files"
 
     RESULTS="$OUT/mutation.tsv"
     printf 'module\tsrcLine\tmutation\tverdict\tmethod\n' > "$RESULTS"
@@ -359,7 +378,8 @@ case "$CMD" in
         done < "$MUTDIR/list.tsv"
     done < <(find "$OUT/ir" -name '*.ll' \
         ! -name 'cajeta.runtime.__stdlib__.ll' \
-        ! -path '*/cajeta/coco/rt/*' | sort)
+        ! -path '*/cajeta/coco/rt/*' \
+        | grep -Ff "$MUTDIR/instrumented.txt" | sort)
 
     total=$((killed+survived))
     echo "coco: mutation score: $killed/$total killed ($skipped skipped as uncovered)"
