@@ -209,16 +209,16 @@ public class Mutate {
 
     // ── steps ──────────────────────────────────────────────────
 
-    /** `llc` the mutant module to an object beside it. */
+    /** Lower the mutant module to an object beside it. */
     static boolean lower(Request r, String base) {
         ArrayList<String> lc #= heap ArrayList<String>();
-        lc.add(r.llcBin.substring(0, r.llcBin.byteLength()));
-        lc.add("-filetype=obj");
+        lc.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
+        lc.add("lower");
         lc.add("-relocation-model=pic");
         lc.add(base + "/mut/mutant.ll");
         lc.add("-o");
         lc.add(base + "/mut/mutant.o");
-        return Pipeline.spawnOrFail(r, lc, "llc mutant");
+        return Pipeline.spawnOrFail(r, lc, "lower mutant");
     }
 
     /**

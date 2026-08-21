@@ -159,13 +159,13 @@ public class Pipeline {
             String rel = linkModules.get(mi);
             String obj #= base + "/obj/" + Pipeline.flatten(rel) + ".o";
             ArrayList<String> lc #= heap ArrayList<String>();
-            lc.add(r.llcBin.substring(0, r.llcBin.byteLength()));
-            lc.add("-filetype=obj");
+            lc.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
+            lc.add("lower");
             lc.add("-relocation-model=pic");
             lc.add(base + "/ir/" + rel);
             lc.add("-o");
             lc.add(obj.substring(0, obj.byteLength()));
-            if (Pipeline.spawnOrFail(r, lc, "llc " + rel) == false) { return false; }
+            if (Pipeline.spawnOrFail(r, lc, "lower " + rel) == false) { return false; }
             objs.add(#obj);
             mi = mi + 1;
         }
@@ -431,11 +431,12 @@ public class Pipeline {
         Io.writeBytes(base + "/rt/Runner.bc", bc, (int32) bc.count());
 
         ArrayList<String> dis #= heap ArrayList<String>();
-        dis.add(r.llvmDisBin.substring(0, r.llvmDisBin.byteLength()));
+        dis.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
+        dis.add("disasm");
         dis.add(base + "/rt/Runner.bc");
         dis.add("-o");
         dis.add(base + "/rt/Runner.ll");
-        if (Pipeline.spawnOrFail(r, dis, "llvm-dis Runner") == false) { return false; }
+        if (Pipeline.spawnOrFail(r, dis, "disasm Runner") == false) { return false; }
 
         String ll #= Io.readAll(base + "/rt/Runner.ll");
         String hooked #= Instrumenter.hookTests(ll);
@@ -446,13 +447,13 @@ public class Pipeline {
         Io.writeAll(base + "/rt/Runner.hooked.ll", hooked);
 
         ArrayList<String> lc #= heap ArrayList<String>();
-        lc.add(r.llcBin.substring(0, r.llcBin.byteLength()));
-        lc.add("-filetype=obj");
+        lc.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
+        lc.add("lower");
         lc.add("-relocation-model=pic");
         lc.add(base + "/rt/Runner.hooked.ll");
         lc.add("-o");
         lc.add(base + "/obj/dev_cajeta_unit_Runner.ll.o");
-        return Pipeline.spawnOrFail(r, lc, "llc hooked Runner");
+        return Pipeline.spawnOrFail(r, lc, "lower hooked Runner");
     }
 
     // ── probe runtime from the plugin's own archive ────────────
@@ -509,13 +510,13 @@ public class Pipeline {
 
             String obj #= base + "/obj/coco_rt_" + cls + ".o";
             ArrayList<String> lc #= heap ArrayList<String>();
-            lc.add(r.llcBin.substring(0, r.llcBin.byteLength()));
-            lc.add("-filetype=obj");
+            lc.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
+            lc.add("lower");
             lc.add("-relocation-model=pic");
             lc.add(base + "/rt/" + cls + ".bc");
             lc.add("-o");
             lc.add(obj.substring(0, obj.byteLength()));
-            if (Pipeline.spawnOrFail(r, lc, "llc " + cls) == false) { return false; }
+            if (Pipeline.spawnOrFail(r, lc, "lower " + cls) == false) { return false; }
             objs.add(#obj);
             k = k + 1;
         }
