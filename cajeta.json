@@ -55,8 +55,17 @@
         // First-party lint + coverage plugins. Optional — comment
         // out when not in use; `lint` + `test` tasks fall back to
         // native-only actions.
+        //
+        // dev.cajeta.coverage is commented out DELIBERATELY, and not just as
+        // tidying. It is this repo's own plugin, so declaring it here is
+        // circular: publishing dev.cajeta.coco would need dev.cajeta.coverage
+        // resolvable, and dev.cajeta.coverage depends on dev.cajeta.coco. No
+        // task here binds a `cajeta.coverage.*` action, so the declaration was
+        // dormant anyway — but plugin resolution runs on every task dispatch,
+        // which made a clean CI build fetch and AOT-compile a stale 0.3.0 for
+        // nothing. Measure coco with a checkout, not with a released copy of
+        // itself.
         "plugins": {
-            "dev.cajeta.coverage":  "0.3.*"
         },
 
         "repositories": [
