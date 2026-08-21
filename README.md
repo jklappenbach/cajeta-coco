@@ -2,6 +2,21 @@
 
 Coverage, dead-code and mutation analysis for Cajeta — written in Cajeta.
 
+
+## Try it
+
+[`samples/tour`](samples/tour/README.md) is a runnable consumer project with
+one class per finding coco reports — dead code, reachable-but-untested, a
+surviving mutant, a high-CRAP method, a redundant test, and a control that
+produces none. It resolves `dev.cajeta.coverage` from Olla rather than from
+this checkout, so it demonstrates what adopting coco looks like rather than
+what developing it looks like.
+
+```
+./samples/tour/run.sh     # cover + mutate, then walk the artifacts
+./scripts/check-tour.sh   # the same run, with every finding asserted
+```
+
 ---
 
 ## 1. Market analysis: what coverage tools actually provide in 2026
