@@ -42,7 +42,14 @@
             // carried here unedited and names a package that exists in no
             // repository — the same trap cajeta-unit and cajeta-logging both
             // documented and fixed.
-            "dev.cajeta.unit": "0.2.2"
+            // Pinned to 0.2.3, the ownership cut. Below it, Runner.runOne
+            // keeps a borrow of a caught exception's message past the catch
+            // that owns it, and coco's own attribution hook — which allocates
+            // and writes a file inside recordResult — turns that latent
+            // use-after-free into a SIGSEGV whenever a test FAILS. coco is the
+            // consumer that makes it fatal, so coco is the consumer that has
+            // to hold the floor.
+            "dev.cajeta.unit": "0.2.3"
         },
 
         // First-party lint + coverage plugins. Optional — comment
