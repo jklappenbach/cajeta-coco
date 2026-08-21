@@ -53,7 +53,7 @@
             // recognised runner on the classpath the run still works, and the
             // Tests tab says the data was not collected rather than showing an
             // empty result (spec 6.2.4).
-            "dev.cajeta.unit": "${unit-version}"
+            "dev.cajeta.unit": "0.2.3"
         },
 
         "repositories": [
@@ -92,11 +92,7 @@
                 "src":   "src",
                 "entry": "tour.coco.CocoTour.main",
 
-                // `classpath` is NOT set. The build tool sends the project's
-                // resolved dependency archives as `context.classpath` — the
-                // same string it gives the compiler as `--classpath` — and the
-                // plugin uses it when the task names none. Set `classpath`
-                // explicitly only to override that.
+                // `classpath` is NOT here — see the `cover` task below.
 
                 // Where every artifact lands, relative to this directory.
                 // The IDE reads this same path (see README).
@@ -158,8 +154,19 @@
         "cover": {
             "description": "Instrument, run the suite, and render the coverage report",
             "actions": [
-                { "action": "cajeta.coverage.instrument", "id": "ci" },
-                { "action": "cajeta.coverage.report",     "id": "cov" }
+                // The plugin compiles THIS project's sources, so it needs this
+                // project's dependency archives. Newer toolchains send them as
+                // `context.classpath` (the same string BuildAction passes as
+                // --classpath) and this line becomes unnecessary; on 0.21.1 and
+                // earlier the plugin sees no classpath and both front-end
+                // passes die on `unknown type 'Runner'`.
+                //
+                // It goes HERE and not in `config` because `${...}` is
+                // substituted in action params on every released toolchain,
+                // while the config block reaches the plugin verbatim.
+                { "action": "cajeta.coverage.instrument",
+                  "classpath": "${unit-cja}", "id": "ci" },
+                { "action": "cajeta.coverage.report", "id": "cov" }
             ],
             "outputs": {
                 "percent": "${cov.percent}",
