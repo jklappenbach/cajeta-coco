@@ -119,7 +119,7 @@ Measured on this machine, hello-world scale:
 | `cajeta --emit=exe` | **89 s** |
 | `cajeta jit-run` | **95 s** |
 | second identical build (cache warm?) | **83 s** — no caching benefit |
-| `llc` one user module → `.o` | **0.03 s** |
+| `cajeta lower` one user module → `.o` | **0.03 s** |
 | relink whole program from `.o` files | **0.18 s** |
 
 Every cajeta front-end invocation re-parses and re-lowers the embedded stdlib.
@@ -128,7 +128,12 @@ That cost is per-process and does not amortise.
 **Consequence:** any design that shells back into `cajeta` per instrumented
 rebuild or per mutant is unusable — 100 mutants would be 2.4 hours. So coco
 pays the front-end cost **exactly once**, harvests the IR, and owns everything
-downstream with LLVM tools directly. A mutant becomes one module re-lowered
+downstream with LLVM directly — through `cajeta lower` and `cajeta disasm`,
+which expose the **compiler's own** LLVM. A separately installed `llc` cannot
+be assumed to exist and, when it does, cannot be assumed to be the same LLVM:
+a packaged cajeta links LLVM in and ships no CLI tools, so `llc` resolves to
+the distro's, and a version skew surfaces as `unterminated attribute group`
+from a parser that names neither party. A mutant becomes one module re-lowered
 plus one link: **well under a second**. That is the difference between mutation
 testing being a headline feature and being a demo that nobody runs.
 
@@ -146,7 +151,7 @@ cajeta --emit=ir --emit-xref     ~80 s, ONCE
         │                                              │
         └── xref.json ──► call graph ──► reachability  │
                                                        ▼
-                              llc (0.03 s/module) ──► .o ──► link (0.2 s)
+                     cajeta lower (0.03 s/module) ──► .o ──► link (0.2 s)
                                                                   │
                                                     run ──► coco.profile
                                                                   │
@@ -342,7 +347,8 @@ v1 mutates `icmp` predicates (boundary `sgt↔sge` `slt↔sle` `ugt↔uge`
 `ult↔ule`, negation `eq↔ne`) — one-token changes that can never produce an
 unlinkable module, chosen over arithmetic swaps because cajeta lowers checked
 arithmetic through `llvm.*.with.overflow` intrinsics that would need
-declaration rewrites. Each mutant is one engine rewrite + `llc` + relink + run
+declaration rewrites. Each mutant is one engine rewrite + `cajeta lower` +
+relink (replaying the recorded `link.tsv` line) + run
 (~0.3 s); **8 mutants completed in 1.9 s total** — the payoff of the
 harvest-IR-once architecture (a per-mutant front-end run would have been 12
 minutes). Mutants in code the suite never executed are skipped, PIT-style:

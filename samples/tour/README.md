@@ -265,7 +265,7 @@ look at. Verdicts are three-way: `killed`, `SURVIVED`, and
 `skipped-uncovered` — the last is excluded from the score rather than counted
 against the suite, because an unexecuted compare cannot be killed.
 
-A mutant is one `llc` plus one relink plus one suite run: the relink replays
+A mutant is one `cajeta lower` plus one relink plus one suite run: the relink replays
 the link line `cover` recorded in `link.tsv` with exactly one object swapped,
 so a mutant is the measured program rather than a near-miss of it. Only
 instrumented modules are mutated — the set comes from `sites.tsv`, so the test

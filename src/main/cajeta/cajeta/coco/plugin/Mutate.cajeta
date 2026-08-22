@@ -231,15 +231,30 @@ public class Mutate {
                         String replaced) {
         ArrayList<String> cc #= heap ArrayList<String>();
         cc.add(r.ccBin.substring(0, r.ccBin.byteLength()));
+        boolean swapped = false;
         int32 i = 0;
         while (i < recorded.count()) {
             String o = recorded.get(i);
             if (o.equals(replaced)) {
                 cc.add(base + "/mut/mutant.o");
+                swapped = true;
             } else {
                 cc.add(o.substring(0, o.byteLength()));
             }
             i = i + 1;
+        }
+        // The comparison is on the recorded SPELLING of the path, so a
+        // link.tsv written under a differently-spelled `out` matches nothing
+        // and the mutant is linked BESIDE the original rather than in place of
+        // it. What the linker then says is a multiple definition of every
+        // symbol in the module — a wall of output that names the symptom and
+        // never the cause. Refuse while the cause is still legible.
+        if (swapped == false) {
+            PluginHost.resultError(
+                "mutate: link.tsv does not list " + replaced
+                + " — it was recorded by a different run, or under a"
+                + " different `out`. Re-run cajeta.coverage.instrument.");
+            return false;
         }
         cc.add("-o");
         cc.add(base + "/mut/mutant");

@@ -27,8 +27,25 @@
 set -uo pipefail
 
 CAJETA="${CAJETA:-/home/julian/code/cpp/cajeta/build/src/cajeta}"
-LLVM_BIN="${LLVM_BIN:-/home/julian/code/cpp/cajeta-llvm/build-cajeta/bin}"
-LLC="$LLVM_BIN/llc"
+# LLVM comes from the COMPILER, not the system. A packaged cajeta links LLVM
+# into the compiler and ships no CLI tools, so a bare `llc` resolves to whatever
+# the distro has — LLVM 21 meeting cajeta's LLVM 23 IR fails with
+# "unterminated attribute group", which names neither party. `cajeta lower` and
+# `cajeta disasm` are the same LLVM that emitted the IR, and were verified
+# byte-identical to the tools they replace. LLVM_BIN still overrides, for
+# bisecting a suspected codegen difference.
+LLVM_BIN="${LLVM_BIN:-}"
+lower() {  # lower <in.ll> <out.o>
+    if [ -n "$LLVM_BIN" ]; then
+        "$LLVM_BIN/llc" -filetype=obj -relocation-model=pic "$1" -o "$2"
+    else
+        "$CAJETA" lower "$1" -o "$2"
+    fi
+}
+disasm() { # disasm <in.bc> <out.ll>
+    if [ -n "$LLVM_BIN" ]; then "$LLVM_BIN/llvm-dis" "$1" -o "$2"
+    else "$CAJETA" disasm "$1" -o "$2"; fi
+}
 CC_BIN="${CC:-cc}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENGINE="${COCO_ENGINE:-$HERE/.build/coco-engine}"
@@ -84,6 +101,18 @@ while [ $# -gt 0 ]; do
         *) die "unknown option $1" ;;
     esac
 done
+
+# `--out` is canonicalized to an ABSOLUTE path before anything records or reads
+# a path under it. `run` writes link.tsv with the paths it linked; `mutate`
+# matches one of them against the object it is replacing, and `--out build/coco`
+# on one invocation against `--out $PWD/build/coco` on the other makes that
+# comparison fail silently — the original object stays on the link line beside
+# the mutant, and ld reports multiple definitions of every symbol in the module.
+case "$CMD" in
+    run)             mkdir -p "$OUT" || die "cannot create --out directory '$OUT'" ;;
+    report|mutate)   [ -d "$OUT" ]   || die "no run artifacts in '$OUT' (run 'coco run' first)" ;;
+esac
+[ -d "$OUT" ] && OUT="$(cd "$OUT" && pwd)"
 
 # Extra compiler flags shared by both front-end passes. DI resolves at compile
 # time, so --profile MUST match between the reference (exe) pass and the
@@ -172,13 +201,13 @@ case "$CMD" in
         HOOKDIR="$OUT/hook"; mkdir -p "$HOOKDIR"
         "$CAJETA" archive cat "$CLASSPATH" dev/cajeta/unit/Runner.bc \
             > "$HOOKDIR/Runner.bc" 2>/dev/null || die "archive cat failed"
-        "$LLVM_BIN/llvm-dis" "$HOOKDIR/Runner.bc" -o "$HOOKDIR/Runner.ll" \
-            || die "llvm-dis failed on Runner.bc"
+        disasm "$HOOKDIR/Runner.bc" "$HOOKDIR/Runner.ll" \
+            || die "disasm failed on Runner.bc"
         HOOK_OUT=$("$ENGINE" hook-tests "$HOOKDIR/Runner.ll" "$HOOKDIR/Runner.hooked.ll" || true)
         if [[ "$HOOK_OUT" == *"test hook injected"* ]]; then
-            "$LLC" -filetype=obj -relocation-model=pic \
-                "$HOOKDIR/Runner.hooked.ll" -o "$OBJDIR/dev_cajeta_unit_Runner.ll.o" \
-                || die "llc failed on hooked Runner"
+            lower "$HOOKDIR/Runner.hooked.ll" \
+                "$OBJDIR/dev_cajeta_unit_Runner.ll.o" \
+                || die "lower failed on hooked Runner"
             ATTRIBUTION=1
         else
             echo "coco: attribution hook not applicable; continuing without"
@@ -201,7 +230,7 @@ case "$CMD" in
     while IFS= read -r ll; do
         rel="${ll#$IRDIR/}"
         o="$OBJDIR/$(echo "$rel" | tr '/' '_').o"
-        "$LLC" -filetype=obj -relocation-model=pic "$ll" -o "$o" || die "llc failed: $ll"
+        lower "$ll" "$o" || die "lower failed: $ll"
         OBJS+=("$o")
         LOWERED_RELS+=("${rel%.ll}")
     done < <(find "$IRDIR" -name '*.ll' ! -name 'cajeta.runtime.__stdlib__.ll' | sort)
@@ -223,7 +252,7 @@ case "$CMD" in
         src="$RT_IR/$rt.ll"
         [ -f "$src" ] || die "probe runtime IR missing: $src (run: coco bootstrap)"
         o="$OBJDIR/coco_rt_$rt.o"
-        "$LLC" -filetype=obj -relocation-model=pic "$src" -o "$o" || die "llc failed: $src"
+        lower "$src" "$o" || die "lower failed: $src"
         OBJS+=("$o")
     done
 
@@ -234,6 +263,14 @@ case "$CMD" in
     [ -f "$EXEDIR/__cajeta_xpu_optix_stub.c" ] && LINK_EXTRA+=("$EXEDIR/__cajeta_xpu_optix_stub.c")
     "$CC_BIN" "${OBJS[@]}" "${LINK_EXTRA[@]}" -o "$BIN" \
         -lssl -lcrypto -lpthread -lm -ldl || die "link failed"
+    # Record the link line, in order, as `coco-link v1` — the same file and the
+    # same format the in-engine pipeline writes. `mutate` replays THIS rather
+    # than reconstructing its own, because a reconstruction that drifts links a
+    # binary which is not the measured program and reports verdicts about it.
+    { echo "coco-link v1"
+      printf '%s\n' "${OBJS[@]}"
+      [ "${#LINK_EXTRA[@]}" -gt 0 ] && printf '%s\n' "${LINK_EXTRA[@]}"
+    } > "$OUT/link.tsv"
 
     echo "coco: [6/7] running measured binary"
     # The profile is written to the process's working directory, so the run
@@ -312,21 +349,24 @@ case "$CMD" in
     E0=$?
     echo "coco: baseline exit $E0"
 
-    # The link line, reconstructed once; per mutant we substitute one object.
-    # Mirrors the run step exactly, including exe-pass objects for classes the
-    # IR pass never emitted as .ll (classpath archives like dev.cajeta.unit) —
-    # a mutant link that forgets those fails on every Assert symbol.
-    EXEDIR="$OUT/exe"
-    STD_OBJS=("$EXEDIR/cajeta.runtime.__stdlib__.o")
-    RT_OBJS=("$OUT"/obj/coco_rt_*.o)
-    LINK_EXTRA=()
-    [ -f "$EXEDIR/__cajeta_tls.o" ] && LINK_EXTRA+=("$EXEDIR/__cajeta_tls.o")
-    [ -f "$EXEDIR/__cajeta_xpu_optix_stub.c" ] && LINK_EXTRA+=("$EXEDIR/__cajeta_xpu_optix_stub.c")
-    while IFS= read -r xo; do
-        xrel="${xo#$EXEDIR/}"; xrel="${xrel%.o}"
-        [ -f "$OUT/obj/$(echo "$xrel" | tr './' '__').ll.o" ] || LINK_EXTRA+=("$xo")
-    done < <(find "$EXEDIR" -name '*.o' \
-        ! -name 'cajeta.runtime.__stdlib__.o' ! -name '__cajeta_tls.o' | sort)
+    # The link line is REPLAYED, not rebuilt. `run` wrote every input it
+    # linked, in order, to link.tsv; per mutant we substitute exactly one entry.
+    # This used to be a second reconstruction that mirrored the run step by
+    # hand — including the exe-pass objects for classes the IR pass never
+    # emitted as .ll (classpath archives like dev.cajeta.unit), which a mutant
+    # link that forgets them fails on at every Assert symbol. Two hand-kept
+    # copies of one link line is a drift waiting to happen, and its failure
+    # mode is a binary that is not the measured program with verdicts reported
+    # about it anyway.
+    [ -f "$OUT/link.tsv" ] || die "no link.tsv in $OUT — re-run 'coco run' to record the link line"
+    LINK_INPUTS=()
+    { read -r hdr
+      [ "$hdr" = "coco-link v1" ] || die "link.tsv carries an unknown header '$hdr'"
+      while IFS= read -r li; do
+          [ -n "$li" ] && LINK_INPUTS+=("$li")
+      done
+    } < "$OUT/link.tsv"
+    [ "${#LINK_INPUTS[@]}" -gt 0 ] || die "link.tsv records no link inputs"
 
     # Mutate only what was INSTRUMENTED. `--exclude` is a flag of `coco run`,
     # and mutate is a separate invocation that cannot see it — but sites.tsv
@@ -345,10 +385,18 @@ case "$CMD" in
     while IFS= read -r m; do
         rel="${m#$OUT/ir/}"
         myobj="$OUT/obj/$(echo "$rel" | tr '/' '_').o"
+        # The recorded line with this module's object dropped. Dropping rather
+        # than keeping matters: leaving the original in alongside the mutant
+        # links two definitions of every symbol in the module.
         OTHERS=()
-        for o in "$OUT"/obj/*.o; do
-            [ "$o" = "$myobj" ] || OTHERS+=("$o")
+        dropped=0
+        for o in "${LINK_INPUTS[@]}"; do
+            if [ "$o" = "$myobj" ]; then dropped=1; else OTHERS+=("$o"); fi
         done
+        # If nothing was dropped, the mutant would be linked ALONGSIDE the
+        # original and ld would report a multiple definition of every symbol in
+        # the module. Refuse here instead, where the cause is still legible.
+        [ "$dropped" -eq 1 ] || die "link.tsv does not list $myobj — it was recorded by a different 'coco run'"
         "$ENGINE" mutants "$m" "$MUTDIR/list.tsv" >/dev/null || die "mutants failed: $m"
         while IFS=$'\t' read -r idx srcline probeid from to method; do
             [ -n "$idx" ] || continue
@@ -361,10 +409,9 @@ case "$CMD" in
             fi
             "$ENGINE" mutate "$m" "$MUTDIR/mutant.ll" "$idx" >/dev/null \
                 || die "mutate failed: $m #$idx"
-            "$LLC" -filetype=obj -relocation-model=pic "$MUTDIR/mutant.ll" \
-                -o "$MUTDIR/mutant.o" || die "llc failed on mutant"
-            "$CC_BIN" "$MUTDIR/mutant.o" "${OTHERS[@]}" "${STD_OBJS[@]}" \
-                "${LINK_EXTRA[@]}" -o "$MUTDIR/mutant" \
+            lower "$MUTDIR/mutant.ll" "$MUTDIR/mutant.o" \
+                || die "lower failed on mutant"
+            "$CC_BIN" "$MUTDIR/mutant.o" "${OTHERS[@]}" -o "$MUTDIR/mutant" \
                 -lssl -lcrypto -lpthread -lm -ldl || die "mutant link failed"
             ( cd "$MUTDIR" && timeout 30 ./mutant >/dev/null 2>&1 )
             E=$?
