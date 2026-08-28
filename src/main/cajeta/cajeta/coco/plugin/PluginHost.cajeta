@@ -1,5 +1,8 @@
 package cajeta.coco.plugin;
 
+import cajeta.buildtool.plugin.ActionResult;
+import cajeta.buildtool.plugin.Finding;
+import cajeta.buildtool.plugin.StdoutActionContext;
 import cajeta.codec.json.JsonReader;
 import cajeta.coco.analysis.CallGraph;
 import cajeta.coco.analysis.Crap;
@@ -110,6 +113,19 @@ public class PluginHost {
     // ── report ─────────────────────────────────────────────────
 
     static void report(Request r) {
+        // `warn` below `min` is configuration nonsense: the warning could
+        // never fire without the error firing too, so the level a reader set
+        // to see drift EARLY would never be reached. Rejected rather than
+        // silently accepted — a config that quietly does nothing is the kind
+        // of thing someone only discovers after the drift they set it to
+        // catch has already happened.
+        if (r.warn > 0 && r.min > 0 && r.warn < r.min) {
+            PluginHost.resultError("coverage `warn` (" + Text.fromInt(r.warn)
+                + "%) is below `min` (" + Text.fromInt(r.min)
+                + "%): a warning below the failing floor can never fire");
+            return;
+        }
+
         String base #= r.workdir + "/" + r.out;
         String sitesText #= Io.readAll(base + "/sites.tsv");
         if (sitesText.byteLength() == 0) {
@@ -176,17 +192,52 @@ public class PluginHost {
         PluginHost.output("lcov-path", r.out + "/lcov.info");
         PluginHost.output("sarif-path", r.out + "/coverage.sarif");
 
-        // The gate: JaCoCo-check semantics. Integer compare against the
-        // integer part so 79.9% fails a min of 80.
-        if (r.min > 0) {
-            int64 gate = 0;
-            if (lt > 0) { gate = (lc * 100) / lt; }
-            if (gate < r.min) {
-                PluginHost.resultError("coverage " + pct
-                                       + "% is below min " + Text.fromInt(r.min) + "%");
-                return;
-            }
+        // ── the gate ───────────────────────────────────────────
+        //
+        // Severity-bearing FINDINGS rather than a bespoke mechanism (spec
+        // §7.1). The number lands in the diagnostic stream, where a CI
+        // consumer reads it directly instead of inferring it from an exit
+        // code, and an `error` finding fails the task by the general rule
+        // (§7a) rather than by coco having its own.
+        //
+        // JaCoCo-check semantics kept: integer compare against the integer
+        // part, so 79.9% fails a min of 80.
+        int64 gate = 0;
+        if (lt > 0) { gate = (lc * 100) / lt; }
+
+        if (r.min > 0 && gate < r.min) {
+            String below #= "coverage " + pct + "% is below min "
+                            + Text.fromInt(r.min) + "%";
+            // `#below` surrenders the message to the finding, which then
+            // owns it; the result reads it back as a borrow rather than
+            // building the same sentence twice.
+            Finding f #= Finding.error("coverage-min", "", 0, 0, #below);
+            PluginHost.finding(f);
+            // AND a failing result, deliberately, which spec §7.1's "one
+            // mechanism instead of two" does not ask for.
+            //
+            // The finding alone fails the task only on a build tool that has
+            // §7a. Published coco runs on whatever toolchain a consumer has,
+            // and dropping the failing result would mean a coverage floor
+            // that silently stops being enforced the moment someone upgrades
+            // coco without upgrading cajeta — a gate that quietly passes is
+            // worse than no gate. The result is the compatibility mechanism,
+            // not a second gate: on a new build tool the result is checked
+            // first and reports exactly what it always did.
+            PluginHost.resultError(f.message());
+            return;
         }
+
+        if (r.warn > 0 && gate < r.warn) {
+            // Recorded, and the task SUCCEEDS. This is the level that makes a
+            // ratchet workable: a project sees drift while it is still cheap
+            // to fix, instead of discovering it the day the build breaks.
+            String drift #= "coverage " + pct + "% is below warn "
+                            + Text.fromInt(r.warn) + "%";
+            Finding w #= Finding.warning("coverage-warn", "", 0, 0, #drift);
+            PluginHost.finding(w);
+        }
+
         PluginHost.resultOk();
     }
 
@@ -263,23 +314,72 @@ public class PluginHost {
         }
     }
 
+    // ── the channel ────────────────────────────────────────────
+    //
+    // Every record goes through the SHIPPED emitter
+    // (`cajeta.buildtool.plugin`), which arrived with the build tool and
+    // escapes through `JsonWriter`. coco used to spell each record itself:
+    //
+    //     System.stdout.println("{\"kind\":\"log\",...,\"message\":\""
+    //                           + Text.jsonEscape(message) + "\"}");
+    //
+    // Two escapers for one wire format is one escaper too many. `jsonEscape`
+    // is coco's own and has to be right forever; the shipped one is the
+    // build tool's, is tested against the reader that consumes it, and gets
+    // fixed once for every plugin when it is wrong.
+    //
+    // Typed CONCRETELY, not as `ActionContext`. A static field of interface
+    // type null-derefs on assignment — measured 2026-08-28 with a two-line
+    // probe, SIGSEGV at fault addr (nil), while the identical field typed as
+    // the concrete class works. If that compiler defect is fixed, this can
+    // become `ActionContext` and gain a recording variant for tests.
+    //
+    // Process-scoped rather than injected: this binary serves exactly one
+    // action per invocation, so the process IS the scope. The shipped API
+    // takes an injected context because it must be testable in-process; coco
+    // has 54 emit sites and one channel, and threading it would buy nothing
+    // here.
+    static StdoutActionContext channel;
+
+    static StdoutActionContext out() {
+        if (PluginHost.channel == null) {
+            PluginHost.channel = heap StdoutActionContext("", "coco", "");
+        }
+        return PluginHost.channel;
+    }
+
     static void log(String message) {
-        System.stdout.println("{\"kind\":\"log\",\"level\":\"info\",\"message\":\""
-                              + Text.jsonEscape(message) + "\"}");
+        PluginHost.out().log(message);
     }
 
     static void output(String key, String value) {
-        System.stdout.println("{\"kind\":\"output\",\"key\":\""
-                              + Text.jsonEscape(key) + "\",\"value\":\""
-                              + Text.jsonEscape(value) + "\"}");
+        PluginHost.out().output(key, value);
+    }
+
+    /** An unlocated finding: coco's gates are whole-project metrics. */
+    static void finding(Finding f) {
+        PluginHost.out().finding(f);
     }
 
     static void resultOk() {
-        System.stdout.println("{\"kind\":\"result\",\"status\":\"ok\"}");
+        ActionResult r #= heap ActionResult();
+        PluginHost.out().result(r);
     }
 
+    /**
+     * `r.fail(m); result(r)` and NOT `result(r.fail(m))` — the fluent form
+     * returns a borrow of the receiver and crashes where a title is wanted.
+     * See `ActionResult`'s own docstring, which used to recommend it.
+     */
     static void resultError(String message) {
-        System.stdout.println("{\"kind\":\"result\",\"status\":\"error\",\"message\":\""
-                              + Text.jsonEscape(message) + "\"}");
+        ActionResult r #= heap ActionResult();
+        // `fail` stores the message in a field, so it wants a TITLE — and a
+        // borrowed parameter holds none to surrender (the compiler says so in
+        // exactly those words). Concatenation materialises one this frame
+        // owns, which is then transferred. Declaring `#String message` here
+        // instead would push the same problem onto six call sites.
+        String owned #= message + "";
+        r.fail(#owned);
+        PluginHost.out().result(r);
     }
 }

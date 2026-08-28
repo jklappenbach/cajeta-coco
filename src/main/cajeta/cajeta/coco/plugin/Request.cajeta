@@ -28,6 +28,19 @@ public class Request {
     String out;
     String cocoHome;
     int64 min;
+    /**
+     * `warn` — the NON-failing coverage level, above `min`.
+     *
+     * A gate that only ever fails gets raised once and then avoided. With
+     * `warn` set above `min` a project sees coverage drift while it is still
+     * cheap to fix, and the build keeps passing until the drift reaches the
+     * floor. That is what makes a ratchet workable.
+     *
+     * 0 means unset. `warn` below `min` is configuration nonsense — the
+     * warning could never fire without the error firing too — and is rejected
+     * rather than silently accepted.
+     */
+    int64 warn;
     /** `min-score` — the mutation-score gate, mirroring `min` for coverage. */
     int64 minScore;
     /**
@@ -76,6 +89,7 @@ public class Request {
         this.cocoHome #= "";
         this.contextClasspath #= "";
         this.min = 0;
+        this.warn = 0;
         this.minScore = 0;
         this.excludes #= heap ArrayList<Exclude>();
         this.cajetaBin #= "cajeta";
@@ -149,6 +163,7 @@ public class Request {
                     else if (name.equals("out")) { field = 6; }
                     else if (name.equals("coco-home")) { field = 7; }
                     else if (name.equals("min")) { field = 8; }
+                    else if (name.equals("warn")) { field = 17; }
                     else if (name.equals("min-score")) { field = 16; }
                     else if (name.equals("exclude")) { inExclude = true; field = 0; }
                     else { field = 0; }
@@ -202,6 +217,7 @@ public class Request {
                 field = 0;
             } else if (t == 6) {                          // NUMBER
                 if (field == 8) { r.min = jr.currentNumberAsInt64(); }
+                else if (field == 17) { r.warn = jr.currentNumberAsInt64(); }
                 else if (field == 16) { r.minScore = jr.currentNumberAsInt64(); }
                 field = 0;
             } else {

@@ -125,13 +125,20 @@
                       "reason":  "the test framework is somebody else's tested code; leaving it in measures the library instead of this project" }
                 ],
 
-                // The gate. Below this, `cajeta.coverage.report` fails the
-                // task — JaCoCo `check` semantics, so 35.9% fails a min of 36.
-                // Set just under this project's real 36.0%: the tour is
-                // SUPPOSED to have gaps, and one that cannot be run is not a
-                // tour. Raise it to 40 and re-run to watch the gate fire. A
-                // real project starts at its current number and ratchets up.
+                // The gate. Below this, `cajeta.coverage.report` reports an
+                // `error` finding and the task fails — JaCoCo `check`
+                // semantics, so 35.9% fails a min of 36. Set just under this
+                // project's real 36.0%: the tour is SUPPOSED to have gaps, and
+                // one that cannot be run is not a tour. Raise it to 40 and
+                // re-run to watch the gate fire.
                 "min": 30
+
+                // `warn` is the level ABOVE `min` that makes a ratchet work:
+                // below it coco records a `warning` finding and the task still
+                // SUCCEEDS, so a project sees drift while it is cheap to fix
+                // rather than the day the build breaks. Add `"warn": 40` here
+                // and re-run to see one reported without failing the tour.
+                // `warn` below `min` is rejected — it could never fire.
             }
         }
     },
