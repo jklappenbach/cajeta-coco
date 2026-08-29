@@ -206,8 +206,22 @@ public class PluginHost {
         if (lt > 0) { gate = (lc * 100) / lt; }
 
         if (r.min > 0 && gate < r.min) {
+            // Report the number that was COMPARED, not `pct`. They disagree
+            // when nothing was measured: `Text.percent(0, 0)` is 100.0 while
+            // the gate compares 0, so the old message read
+            //
+            //     coverage 100.0% is below min 30%
+            //
+            // which is not a sentence anyone can act on. A run that measured
+            // no lines has not passed a coverage floor — it has failed to
+            // measure — and saying so is the difference between a gate a
+            // reader trusts and one they learn to ignore.
             String below #= "coverage " + pct + "% is below min "
                             + Text.fromInt(r.min) + "%";
+            if (lt == 0) {
+                below #= "no lines were measured, so min "
+                         + Text.fromInt(r.min) + "% cannot be met";
+            }
             // `#below` surrenders the message to the finding, which then
             // owns it; the result reads it back as a borrow rather than
             // building the same sentence twice.

@@ -9,6 +9,7 @@ import cajeta.coco.model.SiteTable;
 import cajeta.coco.util.Io;
 import cajeta.coco.util.Text;
 import cajeta.collection.ArrayList;
+import cajeta.io.file.Path;
 import cajeta.lang.String;
 import cajeta.lang.StringBuilder;
 import cajeta.process.Command;
@@ -180,9 +181,29 @@ public class Pipeline {
         // of the same class is a duplicate-symbol link failure.
         Pipeline.classpathObjects(r, base, attribution, objs, linkModules);
 
-        // The two toolchain-constant inputs the reference pass produced.
+        // The toolchain-constant inputs the reference pass produced.
+        //
+        // Every one of these resolves symbols the STDLIB object references but
+        // no AOT link can otherwise satisfy — the compiler drops them beside
+        // the exe for exactly this reason, and a caller that builds its own
+        // link line has to take all of them.
+        //
+        // `__cajeta_session_stub.c` was added by the compiler in `70ef31ae`
+        // and not taken here, which broke instrument outright:
+        //
+        //     undefined reference to `__cajeta_install_hook'   (and _ctx, _out)
+        //
+        // Those three are declared extern by `cajeta_rt_session.c` because
+        // they are DEFINED IN THE HOST; an instrumented binary has no host, so
+        // the stub's weak definitions are what stand in. It broke only once
+        // the debug-info level kept `__cajeta_session_install` alive through
+        // DCE, so a link that worked was a link that got lucky.
+        //
+        // If a future toolchain adds a fourth such input, this list is where
+        // it goes, and the tour gate is what will say so.
         objs.add(base + "/exe/__cajeta_tls.o");
         objs.add(base + "/exe/__cajeta_xpu_optix_stub.c");
+        objs.add(base + "/exe/__cajeta_session_stub.c");
 
         // [4b] Record the link line before using it.
         //
@@ -531,6 +552,31 @@ public class Pipeline {
      * own listings say exactly which. Skip the Runner when the hooked
      * object replaces it.
      */
+    /**
+     * The dependency name an archive path carries: the basename with its
+     * `-<version>.cja` suffix removed. `exe/deps/<that>/` is where the
+     * reference pass puts that dependency's objects.
+     */
+    static #String depNameOf(String cja) {
+        int32 slash = -1;
+        int32 i = 0;
+        while (i < cja.byteLength()) {
+            if (cja.byteAt(i) == 47) { slash = i; }
+            i = i + 1;
+        }
+        String file #= cja.substring(slash + 1, cja.byteLength());
+        int32 n = file.byteLength();
+        if (n > 4) { file #= file.substring(0, n - 4); }   // drop ".cja"
+        int32 dash = -1;
+        int32 j = 0;
+        while (j < file.byteLength()) {
+            if (file.byteAt(j) == 45) { dash = j; }        // last '-'
+            j = j + 1;
+        }
+        if (dash > 0) { return file.substring(0, dash); }
+        return #file;
+    }
+
     static void classpathObjects(Request r, String base, boolean hooked,
                                  ArrayList<String> objs,
                                  ArrayList<String> lowered) {
@@ -541,6 +587,9 @@ public class Pipeline {
             int64 end = comma;
             if (end < 0) { end = n; }
             String cja #= r.classpath.substring((int32) start, (int32) end);
+            // `<...>/dev.cajeta.unit-0.2.2.cja` -> `dev.cajeta.unit`, the
+            // directory the reference pass nests that dep's objects under.
+            String dep #= Pipeline.depNameOf(cja);
             ArrayList<String> lv #= heap ArrayList<String>();
             lv.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
             lv.add("archive");
@@ -569,8 +618,33 @@ public class Pipeline {
                                 if (lowered.get(li2).equals(rel)) { skip = true; }
                                 li2 = li2 + 1;
                             }
+                            // Dependency objects are nested PER DEPENDENCY:
+                            //
+                            //     exe/deps/<dep-name>/<class>.o
+                            //
+                            // not flat in exe/. This looked only at the flat
+                            // path, so it named files that were never going to
+                            // exist: instrument died on `cannot find
+                            // ./build/coco/exe/dev.cajeta.unit.selftest.
+                            // doubles.Gateway.o` and four more, while all 31
+                            // dep objects sat in exe/deps/dev.cajeta.unit/.
+                            //
+                            // Falls back to the flat path rather than SKIPPING
+                            // a missing object. Skipping looks tidier and is
+                            // worse — measured, not guessed: a skip-if-missing
+                            // filter tried here turned `cannot find X.o`,
+                            // which names the problem, into `undefined
+                            // reference to X::method`, which names a symptom
+                            // several steps away.
                             if (skip == false) {
-                                objs.add(base + "/exe/" + cls + ".o");
+                                String nested #= base + "/exe/deps/" + dep
+                                                 + "/" + cls + ".o";
+                                Path np #= Path.of(nested);
+                                if (np.exists()) {
+                                    objs.add(nested.substring(0, nested.byteLength()));
+                                } else {
+                                    objs.add(base + "/exe/" + cls + ".o");
+                                }
                             }
                         }
                     }
