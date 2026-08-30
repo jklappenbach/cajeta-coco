@@ -83,7 +83,7 @@
     // override any of it per-action.
     "plugins": {
         "dev.cajeta.coverage": {
-            "version": "0.5.*",
+            "version": "0.6.*",
 
             "config": {
                 // What to measure, and the method whose return dumps the
