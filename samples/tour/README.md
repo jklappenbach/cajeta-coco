@@ -27,7 +27,7 @@ The control matters as much as the other five. A tour of findings is worthless
 without one class that produces none — it is what proves the rest are findings
 rather than noise.
 
-## Requires cajeta 0.22.2 or newer
+## Requires cajeta 0.25.0 or newer
 
 Not a style preference — the plugin is **AOT-compiled by whatever toolchain
 runs it**, from the `.cja` the resolver fetched. cajeta 0.21.0 miscompiles
@@ -42,10 +42,27 @@ cajeta: uncaught exception (value=0x3)
 A published plugin cannot protect you from this: the bytes are fine, the
 compile of them is not.
 
-0.22.2 raises the floor again, for a different reason: coco lowers IR with
+0.22.2 raised the floor once, for a different reason: coco lowers IR with
 `cajeta lower` rather than a separately installed `llc`. Before that it needed
 an LLVM matching the compiler exactly, which an `apt install` does not give you
 — the package ships LLVM linked into the compiler, not the command-line tools.
+
+**0.25.0 raises it again, and this one is a hard requirement rather than a
+miscompile.** `instrument` builds its own link line, and that line has to take
+every input the compiler drops beside the exe — including
+`__cajeta_session_stub.c`, which carries weak definitions of
+`__cajeta_install_hook` / `_ctx` / `_out`. Those three are declared `extern` by
+the runtime because they are normally *defined in the host*; an instrumented
+binary has no host, so without the stub the link dies on:
+
+```
+undefined reference to `__cajeta_install_hook'
+```
+
+The compiler only began emitting that file in `70ef31ae`, which landed eleven
+hours after v0.24.0 was tagged. On 0.24.0 or older the file simply is not
+there, and the link fails on a missing input instead — so the floor is the
+first release that contains it.
 
 Check `cajeta --version` before filing a bug against the tour.
 

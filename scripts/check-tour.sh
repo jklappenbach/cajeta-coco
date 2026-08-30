@@ -20,9 +20,18 @@ OUT=build/coco
 # miscompiles coco's file reads — every verb then throws `uncaught exception
 # (value=0x3)` from whichever method reads a file first. Refuse up front: that
 # stack names coco and blames the wrong thing.
+#
+# 0.25.0 raises the floor again, and this one is a HARD requirement rather than
+# a miscompile: `Pipeline.instrumentLink` adds `build/exe/__cajeta_session_stub.c`
+# to its link line unconditionally, because the compiler drops that file beside
+# the exe and a caller building its own link line has to take it. The compiler
+# only started emitting it in 70ef31ae, which landed ELEVEN HOURS AFTER v0.24.0
+# was tagged — so on 0.24.0 or older the file does not exist and the link fails
+# on a missing input, which is a worse failure than the undefined
+# `__cajeta_install_hook` it was added to fix.
 ver="$("$CAJETA" --version 2>/dev/null | awk '{print $2}')"
 case "$ver" in
-    0.[0-9].*|0.1?.*|0.20.*|0.21.*|0.22.0|0.22.1) echo "check-tour: cajeta $ver is too old — coco needs 0.22.2+ (it lowers IR with \`cajeta lower\`)" >&2; exit 1 ;;
+    0.[0-9].*|0.1?.*|0.2[0-4].*) echo "check-tour: cajeta $ver is too old — coco needs 0.25.0+ (its link line takes __cajeta_session_stub.c, which only 0.25.0 emits)" >&2; exit 1 ;;
 esac
 
 "$CAJETA" cover

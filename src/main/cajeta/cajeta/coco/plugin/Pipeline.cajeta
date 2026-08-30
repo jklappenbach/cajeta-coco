@@ -73,6 +73,24 @@ public class Pipeline {
         a2.add(r.cajetaBin.substring(0, r.cajetaBin.byteLength()));
         a2.add("--emit=ir");
         a2.add("--emit-xref=" + base + "/xref.json");
+        // LINE coverage lives or dies here. The instrumenter derives a LINE
+        // site from each `@__cajeta_line_mark(i32 N)` in this IR; without one
+        // it still finds `@__cajeta_line_enter` (a per-CALL marker) and emits
+        // FUNCTION and BRANCH sites, so a run looks healthy right up to the
+        // report saying `100.0% lines (0/0)` and failing the min gate on
+        // nothing.
+        //
+        // The compiler used to emit the per-statement mark alongside the
+        // default line-info. It costs 3.5-9.4x, so it MOVED behind
+        // `--debug-info=full` (CompilerMode.h: "the per-STATEMENT
+        // __cajeta_line_mark that used to ride along with it ... moved to
+        // --debug-info=full"), and `dbg::emitLineMark` now returns early
+        // unless debugInfo or safepoints is set. coco never followed, so line
+        // coverage has been structurally zero since that change.
+        //
+        // Only this pass needs it: [1/6] is the reference build, and nothing
+        // instruments its output.
+        a2.add("--debug-info=full");
         Pipeline.addFlags(a2, r);
         a2.add(r.entry.substring(0, r.entry.byteLength()));
         a2.add(r.src.substring(0, r.src.byteLength()));
