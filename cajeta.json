@@ -42,14 +42,22 @@
             // carried here unedited and names a package that exists in no
             // repository — the same trap cajeta-unit and cajeta-logging both
             // documented and fixed.
-            // Pinned to 0.2.3, the ownership cut. Below it, Runner.runOne
-            // keeps a borrow of a caught exception's message past the catch
-            // that owns it, and coco's own attribution hook — which allocates
-            // and writes a file inside recordResult — turns that latent
-            // use-after-free into a SIGSEGV whenever a test FAILS. coco is the
-            // consumer that makes it fatal, so coco is the consumer that has
-            // to hold the floor.
-            "dev.cajeta.unit": "0.2.3"
+            // 0.2.3 was the ownership cut. Below it, Runner.runOne keeps a
+            // borrow of a caught exception's message past the catch that owns
+            // it, and coco's own attribution hook — which allocates and writes
+            // a file inside recordResult — turns that latent use-after-free
+            // into a SIGSEGV whenever a test FAILS. coco is the consumer that
+            // makes it fatal, so coco is the consumer that has to hold the
+            // floor.
+            //
+            // 0.3.0 raises it again, and this raise is not a preference: a
+            // consumer's compiler re-checks a dependency archive's OWN sources,
+            // so on cajeta 0.29.0 the test build of coco dies inside
+            // cajeta-unit with CAJETA_ERROR_CAPTURED_BORROW_PARAM on a field
+            // named `pred`, a symbol coco does not contain. 0.3.0 is the
+            // cajeta-unit cut made by this toolchain, so it is the lowest pin
+            // that compiles.
+            "dev.cajeta.unit": "0.3.0"
         },
 
         // First-party lint + coverage plugins. Optional — comment
