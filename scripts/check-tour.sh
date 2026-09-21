@@ -30,22 +30,28 @@ OUT=build/coco
 # on a missing input, which is a worse failure than the undefined
 # `__cajeta_install_hook` it was added to fix.
 #
-# 0.29.0 does NOT raise it, and the reason is worth writing down because the
-# instinct was to raise it. The probe runtime ships as BITCODE inside the
+# 0.29.0 DOES raise it, to 0.28.0. The probe runtime ships as BITCODE inside the
 # published archive (`cajeta/coco/rt/Probe.bc`, `ProbeDump.bc`) and is lowered
 # and linked against the CONSUMER's stdlib, so an archive is only as portable as
-# the symbols its bitcode names. 0.6.0 was cut by 0.25.0, whose bitcode calls
-# `__cajeta_drop_entry_flag`; v0.28.0 deleted that symbol with the
-# ownership-title-classifier work, so 0.6.0 cannot link on 0.28.0 or newer at
-# all. 0.6.1 is the re-cut. Its bitcode names only
-# __cajeta_drop_mark_inactive, __cajeta_drop_pop_run, __cajeta_drop_push_debug
-# and __cajeta_return_flag_set, all of which have been in the runtime since
-# 0.25.0 — so the floor stays where it is, and this gate was run green on both
-# 0.28.0 and 0.29.0 to prove it. Re-cut coco on every toolchain that moves the
-# drop runtime, and check this list before assuming an old floor still holds.
+# the symbols its bitcode names. 0.6.0 was cut by 0.25.0 and names
+# `__cajeta_drop_entry_flag`, which v0.28.0 deleted with the
+# ownership-title-classifier work. 0.6.1 is the re-cut and names
+# `__cajeta_drop_push_flag_debug`, which no release before v0.28.0 defines. The
+# two cuts are COMPLEMENTARY rather than nested: 0.6.0 links on 0.25.0 through
+# 0.27.0 and nowhere newer, 0.6.1 links on 0.28.0 and newer and nowhere older.
+#
+# An earlier pass recorded the floor as unchanged, on the evidence of this gate
+# running green on 0.28.0 and 0.29.0. Both define the symbol, so neither run
+# could refute the claim. On 0.27.0 the link dies with
+#
+#     undefined reference to `__cajeta_drop_push_flag_debug'
+#     undefined reference to `__cajeta_drop_count'
+#
+# the second from dev.cajeta.unit 0.3.0's Runner.bc, which is also a 0.29.0 cut.
+# Vary the toolchain ACROSS the boundary before trusting a floor.
 ver="$("$CAJETA" --version 2>/dev/null | awk '{print $2}')"
 case "$ver" in
-    0.[0-9].*|0.1?.*|0.2[0-4].*) echo "check-tour: cajeta $ver is too old — coco needs 0.25.0+ (its link line takes __cajeta_session_stub.c, which only 0.25.0 emits)" >&2; exit 1 ;;
+    0.[0-9].*|0.1?.*|0.2[0-7].*) echo "check-tour: cajeta $ver is too old — this checkout pins dev.cajeta.coverage 0.6.1, whose probe bitcode names __cajeta_drop_push_flag_debug and no release before 0.28.0 defines it (0.6.0 is the cut for 0.25.0 through 0.27.0)" >&2; exit 1 ;;
 esac
 
 "$CAJETA" cover
