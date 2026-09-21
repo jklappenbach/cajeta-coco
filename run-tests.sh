@@ -101,14 +101,26 @@ echo ">> cajeta-unit: $unit_cja"
 
 # --- resolve coco's own runtime dependencies ---------------------------------
 # Unlike cajeta-logging (no runtime deps), coco imports dev.cajeta.xref in
-# analysis/CallGraph.cajeta. `cajeta build` resolves runtime dependencies into
-# .cajeta/cache/downloads/; a direct compiler invocation does not, so without
-# this the test build dies with
+# analysis/CallGraph.cajeta. `cajeta build` resolves runtime dependencies for
+# itself; a direct compiler invocation does not, so without this the test build
+# dies with
 #   CAJETA_ERROR_UNKNOWN_TYPE: unknown field type 'XrefDoc'
-# Run a build first to populate the cache, then put each pinned dependency on the
-# COMMA-separated classpath (--classpath=a.cja,b.cja; a colon list is read as one
-# path and fails with "CajetaArchive: cannot open").
-# the classpath. Versions come from cajeta.json, so a bump cannot leave a stale
+# Run a build first to populate the caches, then put each pinned dependency on
+# the COMMA-separated classpath (--classpath=a.cja,b.cja; a colon list is read
+# as one path and fails with "CajetaArchive: cannot open").
+#
+# A resolved archive lands in one of three places, and which one depends on
+# where the build found it rather than on anything this script controls:
+#   $OLLA_HOME/<dep>/<ver>/   a store hit. ~/.olla is the compiler's own
+#                             highest-priority repository, so a machine that
+#                             already holds the package NEVER fetches, and
+#                             .cajeta/cache/downloads/ stays empty.
+#   .cajeta/cache/downloads/  the staging directory for an HTTP fetch.
+#   .cajeta/cache/artifacts/  content-addressed by sha256, and per ArtifactCache
+#                             the path the compiler itself hands to --classpath.
+# Looking only in downloads/ made this step fail on every machine with a warm
+# store, which is every developer machine and any CI runner with a cached
+# $OLLA_HOME. Versions come from cajeta.json, so a bump cannot leave a stale
 # archive silently linked.
 echo ">> resolving runtime dependencies"
 ( cd "$here" && "$CAJETA" build >/dev/null )
@@ -116,9 +128,22 @@ echo ">> resolving runtime dependencies"
 cp_parts=("$unit_cja")
 while IFS=$'\t' read -r dep ver; do
     [[ -z "$dep" ]] && continue
-    dep_cja="$here/.cajeta/cache/downloads/$dep-$ver.cja"
-    if [[ ! -f "$dep_cja" ]]; then
-        echo "run-tests.sh: dependency $dep $ver not resolved at $dep_cja" >&2
+    dep_cja=""
+    for cand in "$OLLA_HOME/$dep/$ver/$dep-$ver.cja" \
+                "$here/.cajeta/cache/downloads/$dep-$ver.cja"; do
+        if [[ -f "$cand" ]]; then dep_cja="$cand"; break; fi
+    done
+    if [[ -z "$dep_cja" ]]; then
+        dep_sha="$(curl -fsS "$OLLA_URL/v2/resolve?name=$dep&version=$ver" 2>/dev/null \
+            | sed -n 's/.*"sha256":"sha256:\([0-9a-f]*\)".*/\1/p')"
+        if [[ -n "$dep_sha" && -f "$here/.cajeta/cache/artifacts/$dep_sha.cja" ]]; then
+            dep_cja="$here/.cajeta/cache/artifacts/$dep_sha.cja"
+        fi
+    fi
+    if [[ -z "$dep_cja" ]]; then
+        echo "run-tests.sh: dependency $dep $ver not resolved" >&2
+        echo "  looked in $OLLA_HOME/$dep/$ver/, .cajeta/cache/downloads/ and" >&2
+        echo "  .cajeta/cache/artifacts/ (by sha256 from $OLLA_URL)" >&2
         exit 1
     fi
     cp_parts+=("$dep_cja")
