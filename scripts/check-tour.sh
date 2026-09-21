@@ -29,6 +29,20 @@ OUT=build/coco
 # was tagged — so on 0.24.0 or older the file does not exist and the link fails
 # on a missing input, which is a worse failure than the undefined
 # `__cajeta_install_hook` it was added to fix.
+#
+# 0.29.0 does NOT raise it, and the reason is worth writing down because the
+# instinct was to raise it. The probe runtime ships as BITCODE inside the
+# published archive (`cajeta/coco/rt/Probe.bc`, `ProbeDump.bc`) and is lowered
+# and linked against the CONSUMER's stdlib, so an archive is only as portable as
+# the symbols its bitcode names. 0.6.0 was cut by 0.25.0, whose bitcode calls
+# `__cajeta_drop_entry_flag`; v0.28.0 deleted that symbol with the
+# ownership-title-classifier work, so 0.6.0 cannot link on 0.28.0 or newer at
+# all. 0.6.1 is the re-cut. Its bitcode names only
+# __cajeta_drop_mark_inactive, __cajeta_drop_pop_run, __cajeta_drop_push_debug
+# and __cajeta_return_flag_set, all of which have been in the runtime since
+# 0.25.0 — so the floor stays where it is, and this gate was run green on both
+# 0.28.0 and 0.29.0 to prove it. Re-cut coco on every toolchain that moves the
+# drop runtime, and check this list before assuming an old floor still holds.
 ver="$("$CAJETA" --version 2>/dev/null | awk '{print $2}')"
 case "$ver" in
     0.[0-9].*|0.1?.*|0.2[0-4].*) echo "check-tour: cajeta $ver is too old — coco needs 0.25.0+ (its link line takes __cajeta_session_stub.c, which only 0.25.0 emits)" >&2; exit 1 ;;

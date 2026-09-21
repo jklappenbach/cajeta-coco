@@ -64,6 +64,16 @@ hours after v0.24.0 was tagged. On 0.24.0 or older the file simply is not
 there, and the link fails on a missing input instead — so the floor is the
 first release that contains it.
 
+**0.29.0 does not raise the floor, but it did force a re-cut.** The probe
+runtime ships as bitcode inside the published archive and is linked against
+*your* stdlib, so a coco release is only as portable as the symbols that
+bitcode names. `dev.cajeta.coverage` 0.6.0 was cut by 0.25.0 and its bitcode
+calls `__cajeta_drop_entry_flag`, which cajeta 0.28.0 deleted — on 0.28.0 or
+newer, 0.6.0 fails at link with `undefined reference to
+__cajeta_drop_entry_flag`. 0.6.1 is the same code cut by 0.29.0, and it names
+only runtime entry points that have been present since 0.25.0. Use 0.6.1 or
+newer.
+
 Check `cajeta --version` before filing a bug against the tour.
 
 ## Run it
