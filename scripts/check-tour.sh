@@ -35,10 +35,10 @@ OUT=build/coco
 # and linked against the CONSUMER's stdlib, so an archive is only as portable as
 # the symbols its bitcode names. 0.6.0 was cut by 0.25.0 and names
 # `__cajeta_drop_entry_flag`, which v0.28.0 deleted with the
-# ownership-title-classifier work. 0.6.1 is the re-cut and names
+# ownership-title-classifier work. 0.7.0 is the re-cut and names
 # `__cajeta_drop_push_flag_debug`, which no release before v0.28.0 defines. The
 # two cuts are COMPLEMENTARY rather than nested: 0.6.0 links on 0.25.0 through
-# 0.27.0 and nowhere newer, 0.6.1 links on 0.28.0 and newer and nowhere older.
+# 0.27.0 and nowhere newer, 0.7.0 links on 0.28.0 and newer and nowhere older.
 #
 # An earlier pass recorded the floor as unchanged, on the evidence of this gate
 # running green on 0.28.0 and 0.29.0. Both define the symbol, so neither run
@@ -51,7 +51,7 @@ OUT=build/coco
 # Vary the toolchain ACROSS the boundary before trusting a floor.
 ver="$("$CAJETA" --version 2>/dev/null | awk '{print $2}')"
 case "$ver" in
-    0.[0-9].*|0.1?.*|0.2[0-7].*) echo "check-tour: cajeta $ver is too old — this checkout pins dev.cajeta.coverage 0.6.1, whose probe bitcode names __cajeta_drop_push_flag_debug and no release before 0.28.0 defines it (0.6.0 is the cut for 0.25.0 through 0.27.0)" >&2; exit 1 ;;
+    0.[0-9].*|0.1?.*|0.2[0-7].*) echo "check-tour: cajeta $ver is too old — this checkout pins dev.cajeta.coverage 0.7.*, whose probe bitcode names __cajeta_drop_push_flag_debug and no release before 0.28.0 defines it (0.6.0 is the cut for 0.25.0 through 0.27.0)" >&2; exit 1 ;;
 esac
 
 "$CAJETA" cover

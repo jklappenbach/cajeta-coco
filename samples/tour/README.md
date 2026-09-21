@@ -68,10 +68,10 @@ first release that contains it.
 the published archive and is linked against *your* stdlib, so a coco release is
 only as portable as the symbols that bitcode names. `dev.cajeta.coverage` 0.6.0
 was cut by 0.25.0 and its bitcode calls `__cajeta_drop_entry_flag`, which cajeta
-0.28.0 deleted, so 0.6.0 fails at link on 0.28.0 or newer. 0.6.1 is the same
+0.28.0 deleted, so 0.6.0 fails at link on 0.28.0 or newer. 0.7.0 is the same
 code cut by 0.29.0, and its bitcode calls `__cajeta_drop_push_flag_debug`, which
 no release before 0.28.0 defines. The two cuts do not overlap. Use 0.6.0 on
-cajeta 0.25.0 through 0.27.0, and 0.6.1 on 0.28.0 and newer.
+cajeta 0.25.0 through 0.27.0, and 0.7.0 on 0.28.0 and newer.
 
 Check `cajeta --version` before filing a bug against the tour.
 
