@@ -98,7 +98,7 @@ public class ProbeDump {
         }
         pbuf[pn] = 0;
         String path #= heap String(#pbuf, pn);
-        FileWriter w = File.openWrite(path, OpenMode.WRITE);
+        FileWriter w #= File.openWrite(path, OpenMode.WRITE);
         w.writeString(text);
         w.flush();
         w.close();
@@ -152,7 +152,7 @@ public class ProbeDump {
 
         String text #= sb.toString();
         String path #= ProbeDump.fileName();
-        FileWriter w = File.openWrite(path, OpenMode.WRITE);
+        FileWriter w #= File.openWrite(path, OpenMode.WRITE);
         w.writeString(text);
         w.flush();
         w.close();

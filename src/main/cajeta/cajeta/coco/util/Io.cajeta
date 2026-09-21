@@ -55,7 +55,7 @@ public class Io {
     /** Read `path` as UTF-8 text. Returns empty when the file cannot be read. */
     public static #String readAll(String path) {
         String p #= Io.cstr(path);
-        FileReader r = File.openRead(p);
+        FileReader r #= File.openRead(p);
         if (r == null) { return ""; }
         String s #= r.readString(Io.maxRead());
         r.close();
@@ -65,7 +65,7 @@ public class Io {
     /** Write `text` to `path`, truncating any existing content. */
     public static void writeAll(String path, String text) {
         String p #= Io.cstr(path);
-        FileWriter w = File.openWrite(p, OpenMode.WRITE);
+        FileWriter w #= File.openWrite(p, OpenMode.WRITE);
         if (w == null) { return; }
         w.writeString(text);
         w.flush();
@@ -85,7 +85,7 @@ public class Io {
      */
     public static void appendAll(String path, String text) {
         String p #= Io.cstr(path);
-        FileWriter w = File.openWrite(p, OpenMode.APPEND);
+        FileWriter w #= File.openWrite(p, OpenMode.APPEND);
         if (w == null) { return; }
         w.writeString(text);
         w.flush();
