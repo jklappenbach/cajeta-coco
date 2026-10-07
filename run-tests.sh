@@ -16,12 +16,8 @@
 #
 # cajeta-unit resolution, in order:
 #   1. $UNIT_CJA        — explicit archive path, used verbatim
-#   2. $UNIT_REPO       — a checkout (default ../cajeta-unit): build it and use
-#                         whatever version it emits. The local-dev flow.
-#                         NOTE: coco lives under ~/code/cajeta while cajeta-unit
-#                         lives under ~/code/cpp, so the default sibling path
-#                         does NOT resolve here — set UNIT_REPO explicitly for
-#                         the checkout flow.
+#   2. $UNIT_REPO       — a checkout, opt-in only (no default): build it and use
+#                         whatever version it emits.
 #   3. $OLLA_HOME store — an installed dev.cajeta.unit at the version pinned in
 #                         cajeta.json's dev-dependencies
 #   4. Olla registry    — /v2/resolve + /v2/blob, sha256-verified, cached under
@@ -31,14 +27,14 @@
 # Env:
 #   CAJETA     — compiler binary (default: cajeta on PATH)
 #   UNIT_CJA   — explicit cajeta-unit .cja (skips all resolution)
-#   UNIT_REPO  — path to a cajeta-unit checkout (default: ../cajeta-unit)
+#   UNIT_REPO  — path to a cajeta-unit checkout (no default, opt-in)
 #   OLLA_HOME  — local package store (default: ~/.olla)
 #   OLLA_URL   — registry base (default: https://olla.cajeta.dev)
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 CAJETA="${CAJETA:-cajeta}"
-UNIT_REPO="${UNIT_REPO:-$here/../cajeta-unit}"
+UNIT_REPO="${UNIT_REPO:-}"
 OLLA_HOME="${OLLA_HOME:-$HOME/.olla}"
 OLLA_URL="${OLLA_URL:-https://olla.cajeta.dev}"
 
@@ -50,7 +46,7 @@ sha256_of() {
 # --- resolve the cajeta-unit archive -----------------------------------------
 unit_cja="${UNIT_CJA:-}"
 
-if [[ -z "$unit_cja" && -d "$UNIT_REPO" ]]; then
+if [[ -z "$unit_cja" && -n "$UNIT_REPO" && -d "$UNIT_REPO" ]]; then
     echo ">> building cajeta-unit from checkout ($UNIT_REPO)"
     ( cd "$UNIT_REPO" && "$CAJETA" build >/dev/null )
     unit_cja="$(ls -t "$UNIT_REPO"/build/archive/dev.cajeta.unit-*.cja 2>/dev/null | head -1)"

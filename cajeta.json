@@ -4,7 +4,7 @@
 
     "details": {
         "name":               "dev.cajeta.coco",
-        "version":            "0.7.0",
+        "version":            "0.7.1",
         "description":        "cajeta-coco — coverage, dead-code and mutation analysis for Cajeta",
         "license":            "Apache-2.0",
         "authors":            ["sample"],
@@ -33,7 +33,7 @@
         // (dead-code elimination). The stdlib API level is pinned by
         // `details.cajeta-lang-version` above.
         "dependencies": {
-            "dev.cajeta.xref": "0.1.0"
+            "dev.cajeta.xref": "0.3.0"
         },
 
         "dev-dependencies": {
@@ -57,7 +57,7 @@
             // named `pred`, a symbol coco does not contain. 0.3.0 is the
             // cajeta-unit cut made by this toolchain, so it is the lowest pin
             // that compiles.
-            "dev.cajeta.unit": "0.3.0"
+            "dev.cajeta.unit": "0.3.4"
         },
 
         // First-party lint + coverage plugins. Optional — comment

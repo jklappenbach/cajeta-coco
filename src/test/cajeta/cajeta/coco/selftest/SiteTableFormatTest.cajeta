@@ -100,7 +100,7 @@ public class SiteTableFormatTest {
               + "3\tbranch-false\t5\t1\tCond.cajeta\tprobe.Cond\tboth\tentry\tland_merge\n");
         } catch (Exception e) {
             refused = true;
-            detail = e.message;
+            detail #= e.message.substring(0, e.message.byteLength());
         }
         Assert.isTrue(refused);
         // The short row is the third line of the document.
